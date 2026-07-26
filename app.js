@@ -1,7 +1,16 @@
-/* Price Check & Product Database
+/* Price Check — supermarket-style kiosk
  * Self-contained: no build step, no server, no dependencies.
- * Data lives in localStorage. Barcode scanning uses the native
- * BarcodeDetector API when available, with manual entry as a fallback.
+ *
+ * Scanning:
+ *   - Hardware barcode scanner (USB/Bluetooth "keyboard wedge"): captured
+ *     globally — just scan, no need to click anything. The scanner types the
+ *     digits fast and sends Enter; we look up the price instantly.
+ *   - Manual entry and phone camera (native BarcodeDetector) also supported.
+ *
+ * After a result is shown it auto-clears back to "Scan a barcode" after a
+ * configurable delay (default 5 seconds).
+ *
+ * Data lives in localStorage.
  */
 
 (function () {
@@ -9,37 +18,47 @@
 
   var STORAGE_KEY = "priceCheck.products.v1";
   var CURRENCY_KEY = "priceCheck.currency.v1";
+  var AUTOCLEAR_KEY = "priceCheck.autoClearSec.v1";
 
   /* ---------- State ---------- */
   var products = load();
   var editingId = null;
   var currency = localStorage.getItem(CURRENCY_KEY) || "$";
+  var autoClearSec = clampInt(localStorage.getItem(AUTOCLEAR_KEY), 1, 60, 5);
   var lastScan = "";
+  var clearTimer = null;
 
   /* ---------- Elements ---------- */
   var $ = function (id) { return document.getElementById(id); };
-
   var els = {
+    // kiosk
+    openManage: $("openManage"),
+    stateIdle: $("stateIdle"),
+    stateFound: $("stateFound"),
+    stateNotFound: $("stateNotFound"),
+    foundName: $("foundName"),
+    foundPrice: $("foundPrice"),
+    foundMeta: $("foundMeta"),
+    notFoundCode: $("notFoundCode"),
+    countdownBar: $("countdownBar"),
+    countdownBar2: $("countdownBar2"),
+    manualForm: $("manualForm"),
+    manualInput: $("manualInput"),
+    cameraToggle: $("cameraToggle"),
+    cameraWrap: $("cameraWrap"),
+    cameraClose: $("cameraClose"),
+    video: $("video"),
+    kioskStatus: $("kioskStatus"),
+
+    // manage
+    manageOverlay: $("manageOverlay"),
+    managePanel: $("managePanel"),
+    closeManage: $("closeManage"),
     sumCount: $("sumCount"),
     sumAvg: $("sumAvg"),
     sumLast: $("sumLast"),
-
-    startScanBtn: $("startScanBtn"),
-    stopScanBtn: $("stopScanBtn"),
-    scannerWrap: $("scannerWrap"),
-    video: $("video"),
-    scanStatus: $("scanStatus"),
-
-    lookupForm: $("lookupForm"),
-    lookupBarcode: $("lookupBarcode"),
-    result: $("result"),
-    resultName: $("resultName"),
-    resultBarcode: $("resultBarcode"),
-    resultPrice: $("resultPrice"),
-    notFound: $("notFound"),
-    notFoundBarcode: $("notFoundBarcode"),
-    addFromNotFound: $("addFromNotFound"),
-
+    currency: $("currency"),
+    autoClear: $("autoClear"),
     productForm: $("productForm"),
     formTitle: $("formTitle"),
     productId: $("productId"),
@@ -51,14 +70,11 @@
     fSku: $("fSku"),
     saveBtn: $("saveBtn"),
     cancelEditBtn: $("cancelEditBtn"),
-
-    currency: $("currency"),
     search: $("search"),
     importBtn: $("importBtn"),
     importFile: $("importFile"),
     exportCsvBtn: $("exportCsvBtn"),
     exportJsonBtn: $("exportJsonBtn"),
-
     tableBody: $("tableBody"),
     emptyMsg: $("emptyMsg"),
     dbCount: $("dbCount"),
@@ -69,21 +85,13 @@
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   }
-  function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
-  }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(products)); }
 
   /* ---------- Helpers ---------- */
-  function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  }
-  function normBarcode(b) {
-    return String(b == null ? "" : b).trim();
-  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function normBarcode(b) { return String(b == null ? "" : b).trim(); }
   function findByBarcode(b) {
     var key = normBarcode(b);
     for (var i = 0; i < products.length; i++) {
@@ -96,31 +104,193 @@
     if (!isFinite(v)) v = 0;
     return currency + v.toFixed(2);
   }
+  function clampInt(v, min, max, dflt) {
+    var n = parseInt(v, 10);
+    if (!isFinite(n)) return dflt;
+    return Math.max(min, Math.min(max, n));
+  }
   function escapeHtml(s) {
     return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function isManageOpen() { return !els.managePanel.hidden; }
 
   var toastTimer = null;
   function toast(msg, kind) {
     var t = document.querySelector(".toast");
-    if (!t) {
-      t = document.createElement("div");
-      t.className = "toast";
-      document.body.appendChild(t);
-    }
+    if (!t) { t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
     t.textContent = msg;
     t.className = "toast show" + (kind ? " " + kind : "");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      t.className = "toast" + (kind ? " " + kind : "");
-    }, 2600);
+    toastTimer = setTimeout(function () { t.className = "toast" + (kind ? " " + kind : ""); }, 2400);
   }
 
-  /* ---------- Rendering ---------- */
+  /* ================= KIOSK DISPLAY ================= */
+  function showState(which) {
+    els.stateIdle.hidden = which !== "idle";
+    els.stateFound.hidden = which !== "found";
+    els.stateNotFound.hidden = which !== "notfound";
+  }
+
+  function runCountdown(bar) {
+    if (!bar) return;
+    bar.classList.remove("run");
+    // Force reflow so the animation restarts each scan.
+    void bar.offsetWidth;
+    bar.style.animationDuration = autoClearSec + "s";
+    bar.classList.add("run");
+  }
+
+  function showIdle() {
+    clearTimeout(clearTimer);
+    clearTimer = null;
+    showState("idle");
+  }
+
+  function armAutoClear() {
+    clearTimeout(clearTimer);
+    clearTimer = setTimeout(showIdle, autoClearSec * 1000);
+  }
+
+  function doLookup(barcode) {
+    var b = normBarcode(barcode);
+    if (!b) return;
+    lastScan = b;
+
+    var p = findByBarcode(b);
+    if (p) {
+      els.foundName.textContent = p.name;
+      els.foundPrice.textContent = money(p.price);
+      els.foundMeta.textContent = p.barcode + (p.category ? "  ·  " + p.category : "");
+      showState("found");
+      runCountdown(els.countdownBar);
+      if (navigator.vibrate) navigator.vibrate(50);
+    } else {
+      els.notFoundCode.textContent = b;
+      showState("notfound");
+      runCountdown(els.countdownBar2);
+      if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+    }
+    armAutoClear();
+    renderSummary();
+  }
+
+  /* ================= HARDWARE SCANNER (keyboard wedge) ================= */
+  // A barcode scanner behaves like a keyboard: it types the code very fast and
+  // ends with Enter. We buffer keystrokes globally and submit on Enter, so the
+  // user never has to focus a field. A pause resets the buffer, so stray key
+  // presses don't accumulate into a bogus code.
+  var scanBuffer = "";
+  var lastKeyAt = 0;
+  var INTERKEY_RESET_MS = 200; // gap larger than this starts a fresh buffer
+
+  document.addEventListener("keydown", function (e) {
+    // Let real typing into any field (manage panel, manual box) behave normally.
+    var tag = (e.target && e.target.tagName ? e.target.tagName : "").toUpperCase();
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    var now = Date.now();
+    if (now - lastKeyAt > INTERKEY_RESET_MS) scanBuffer = "";
+    lastKeyAt = now;
+
+    if (e.key === "Enter") {
+      if (scanBuffer.length >= 3) doLookup(scanBuffer);
+      scanBuffer = "";
+      return;
+    }
+    // Accept typical barcode characters only.
+    if (e.key.length === 1 && /[0-9A-Za-z\-]/.test(e.key)) {
+      scanBuffer += e.key;
+    }
+  });
+
+  /* ================= MANUAL + CAMERA ================= */
+  els.manualForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = els.manualInput.value;
+    els.manualInput.value = "";
+    doLookup(v);
+  });
+
+  var scanner = { stream: null, detector: null, running: false, rafId: null };
+  function scanSupported() { return "BarcodeDetector" in window; }
+
+  async function openCamera() {
+    if (!scanSupported()) {
+      els.kioskStatus.textContent = "Camera scanning isn't supported here — use the barcode field or a hardware scanner.";
+      return;
+    }
+    if (scanner.running) return;
+    try {
+      els.kioskStatus.textContent = "Starting camera…";
+      scanner.detector = new window.BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "codabar"],
+      });
+      scanner.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      els.video.srcObject = scanner.stream;
+      await els.video.play();
+      els.cameraWrap.hidden = false;
+      scanner.running = true;
+      els.kioskStatus.textContent = "Point the camera at a barcode…";
+      scanLoop();
+    } catch (e) {
+      els.kioskStatus.textContent = "Couldn't access the camera. Check permissions or use the barcode field.";
+      closeCamera();
+    }
+  }
+
+  var lastDetected = { code: "", at: 0 };
+  async function scanLoop() {
+    if (!scanner.running) return;
+    try {
+      var codes = await scanner.detector.detect(els.video);
+      if (codes && codes.length) {
+        var value = normBarcode(codes[0].rawValue);
+        var now = Date.now();
+        if (value && !(value === lastDetected.code && now - lastDetected.at < 2500)) {
+          lastDetected = { code: value, at: now };
+          doLookup(value);
+        }
+      }
+    } catch (e) { /* transient detect errors are fine */ }
+    scanner.rafId = requestAnimationFrame(scanLoop);
+  }
+
+  function closeCamera() {
+    scanner.running = false;
+    if (scanner.rafId) cancelAnimationFrame(scanner.rafId);
+    if (scanner.stream) { scanner.stream.getTracks().forEach(function (t) { t.stop(); }); scanner.stream = null; }
+    els.video.srcObject = null;
+    els.cameraWrap.hidden = true;
+    els.kioskStatus.textContent = "";
+  }
+
+  els.cameraToggle.addEventListener("click", function () {
+    if (scanner.running) closeCamera(); else openCamera();
+  });
+  els.cameraClose.addEventListener("click", closeCamera);
+
+  /* ================= MANAGE PANEL ================= */
+  function openManage() {
+    els.manageOverlay.hidden = false;
+    els.managePanel.hidden = false;
+    renderAll();
+  }
+  function closeManage() {
+    els.manageOverlay.hidden = true;
+    els.managePanel.hidden = true;
+    resetForm();
+  }
+  els.openManage.addEventListener("click", openManage);
+  els.closeManage.addEventListener("click", closeManage);
+  els.manageOverlay.addEventListener("click", closeManage);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && isManageOpen()) closeManage();
+  });
+
+  /* ---------- Summary + table ---------- */
   function renderSummary() {
     els.sumCount.textContent = String(products.length);
     var sum = 0, n = 0;
@@ -151,7 +321,7 @@
 
     if (!products.length) {
       els.emptyMsg.hidden = false;
-      els.emptyMsg.textContent = "No products yet. Scan or add one above to get started.";
+      els.emptyMsg.textContent = "No products yet. Add one above or import a CSV.";
       return;
     }
     if (!rows.length) {
@@ -169,8 +339,7 @@
       var marginHtml = "—";
       if (cost != null && isFinite(cost) && isFinite(price)) {
         var m = price - cost;
-        var cls = m >= 0 ? "margin-pos" : "margin-neg";
-        marginHtml = '<span class="' + cls + '">' + money(m) + "</span>";
+        marginHtml = '<span class="' + (m >= 0 ? "margin-pos" : "margin-neg") + '">' + money(m) + "</span>";
       }
       tr.innerHTML =
         '<td class="barcode-cell">' + escapeHtml(p.barcode) + "</td>" +
@@ -188,30 +357,7 @@
     els.tableBody.appendChild(frag);
   }
 
-  function renderAll() {
-    renderSummary();
-    renderTable();
-  }
-
-  /* ---------- Price check ---------- */
-  function doLookup(barcode) {
-    var b = normBarcode(barcode);
-    if (!b) return;
-    lastScan = b;
-    var p = findByBarcode(b);
-    if (p) {
-      els.resultName.textContent = p.name;
-      els.resultBarcode.textContent = p.barcode + (p.category ? " · " + p.category : "");
-      els.resultPrice.textContent = money(p.price);
-      els.result.hidden = false;
-      els.notFound.hidden = true;
-    } else {
-      els.notFoundBarcode.textContent = b;
-      els.notFound.hidden = false;
-      els.result.hidden = true;
-    }
-    renderSummary();
-  }
+  function renderAll() { renderSummary(); renderTable(); }
 
   /* ---------- Add / edit ---------- */
   function startEdit(id) {
@@ -230,7 +376,6 @@
     els.saveBtn.textContent = "Update Product";
     els.cancelEditBtn.hidden = false;
     els.fName.focus();
-    els.productForm.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function resetForm() {
@@ -251,14 +396,12 @@
       toast("Barcode, name and price are required.", "error");
       return;
     }
-
     var dup = findByBarcode(barcode);
     if (dup && dup.id !== editingId) {
       toast("That barcode already exists — editing it instead.", "error");
       startEdit(dup.id);
       return;
     }
-
     var data = {
       barcode: barcode,
       name: name,
@@ -267,7 +410,6 @@
       category: els.fCategory.value.trim(),
       sku: els.fSku.value.trim(),
     };
-
     if (editingId) {
       for (var i = 0; i < products.length; i++) {
         if (products[i].id === editingId) {
@@ -282,7 +424,6 @@
       products.push(data);
       toast("Product added.", "success");
     }
-
     save();
     resetForm();
     renderAll();
@@ -300,15 +441,34 @@
     toast("Product deleted.");
   }
 
+  els.productForm.addEventListener("submit", saveProduct);
+  els.cancelEditBtn.addEventListener("click", resetForm);
+  els.tableBody.addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (btn.classList.contains("edit")) startEdit(id);
+    else if (btn.classList.contains("del")) deleteProduct(id);
+  });
+  els.search.addEventListener("input", renderTable);
+
+  els.currency.addEventListener("input", function () {
+    currency = els.currency.value || "$";
+    localStorage.setItem(CURRENCY_KEY, currency);
+    renderAll();
+  });
+  els.autoClear.addEventListener("input", function () {
+    autoClearSec = clampInt(els.autoClear.value, 1, 60, 5);
+    localStorage.setItem(AUTOCLEAR_KEY, String(autoClearSec));
+  });
+
   /* ---------- CSV import / export ---------- */
   var CSV_HEADERS = ["barcode", "name", "price", "cost", "category", "sku"];
-
   function csvEscape(v) {
     var s = String(v == null ? "" : v);
     if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
     return s;
   }
-
   function exportCsv() {
     if (!products.length) { toast("Nothing to export yet.", "error"); return; }
     var lines = [CSV_HEADERS.join(",")];
@@ -318,39 +478,27 @@
     downloadFile(lines.join("\r\n"), "products.csv", "text/csv");
     toast("Exported " + products.length + " products to CSV.", "success");
   }
-
   function exportJson() {
     if (!products.length) { toast("Nothing to export yet.", "error"); return; }
     downloadFile(JSON.stringify(products, null, 2), "products.json", "application/json");
     toast("Exported " + products.length + " products to JSON.", "success");
   }
-
   function downloadFile(content, filename, type) {
     var blob = new Blob([content], { type: type + ";charset=utf-8" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
-
-  // Minimal RFC-4180-ish CSV parser (handles quotes, commas, newlines).
   function parseCsv(text) {
-    var rows = [];
-    var row = [];
-    var field = "";
-    var inQuotes = false;
-    text = text.replace(/^﻿/, ""); // strip BOM
+    var rows = [], row = [], field = "", inQuotes = false;
+    text = text.replace(/^﻿/, "");
     for (var i = 0; i < text.length; i++) {
       var c = text[i];
       if (inQuotes) {
-        if (c === '"') {
-          if (text[i + 1] === '"') { field += '"'; i++; }
-          else inQuotes = false;
-        } else field += c;
+        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+        else field += c;
       } else {
         if (c === '"') inQuotes = true;
         else if (c === ",") { row.push(field); field = ""; }
@@ -362,7 +510,17 @@
     if (field.length || row.length) { row.push(field); rows.push(row); }
     return rows;
   }
-
+  function firstIndex(header, names) {
+    for (var i = 0; i < names.length; i++) {
+      var idx = header.indexOf(names[i]);
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+  function cleanNumber(v) {
+    var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    return isFinite(n) ? n : 0;
+  }
   function importCsv(file) {
     var reader = new FileReader();
     reader.onload = function () {
@@ -371,36 +529,29 @@
           return r.some(function (c) { return String(c).trim() !== ""; });
         });
         if (!rows.length) { toast("CSV appears to be empty.", "error"); return; }
-
-        // Map header columns to fields (case-insensitive).
         var header = rows[0].map(function (h) { return h.trim().toLowerCase(); });
         var idx = {};
-        CSV_HEADERS.forEach(function (h) { idx[h] = header.indexOf(h); });
-        // Also accept common aliases.
-        if (idx.barcode < 0) idx.barcode = firstIndex(header, ["barcode", "upc", "ean", "code"]);
-        if (idx.name < 0) idx.name = firstIndex(header, ["name", "product", "product name", "description", "item"]);
-        if (idx.price < 0) idx.price = firstIndex(header, ["price", "sell", "retail", "unit price"]);
-        if (idx.cost < 0) idx.cost = firstIndex(header, ["cost", "buy", "wholesale"]);
-        if (idx.category < 0) idx.category = firstIndex(header, ["category", "group", "dept"]);
-        if (idx.sku < 0) idx.sku = firstIndex(header, ["sku", "stock code", "code2"]);
-
+        idx.barcode = firstIndex(header, ["barcode", "upc", "ean", "code"]);
+        idx.name = firstIndex(header, ["name", "product", "product name", "description", "item"]);
+        idx.price = firstIndex(header, ["price", "sell", "retail", "unit price"]);
+        idx.cost = firstIndex(header, ["cost", "buy", "wholesale"]);
+        idx.category = firstIndex(header, ["category", "group", "dept"]);
+        idx.sku = firstIndex(header, ["sku", "stock code"]);
         if (idx.barcode < 0 || idx.name < 0) {
           toast("CSV needs at least 'barcode' and 'name' columns.", "error");
           return;
         }
-
         var added = 0, updated = 0, skipped = 0;
         for (var r = 1; r < rows.length; r++) {
           var cells = rows[r];
           var barcode = normBarcode(cells[idx.barcode]);
-          var name = idx.name >= 0 ? String(cells[idx.name] || "").trim() : "";
+          var name = String(cells[idx.name] || "").trim();
           if (!barcode || !name) { skipped++; continue; }
-          var priceRaw = idx.price >= 0 ? cells[idx.price] : "";
           var costRaw = idx.cost >= 0 ? cells[idx.cost] : "";
           var rec = {
             barcode: barcode,
             name: name,
-            price: cleanNumber(priceRaw),
+            price: idx.price >= 0 ? cleanNumber(cells[idx.price]) : 0,
             cost: costRaw === "" || costRaw == null ? "" : cleanNumber(costRaw),
             category: idx.category >= 0 ? String(cells[idx.category] || "").trim() : "",
             sku: idx.sku >= 0 ? String(cells[idx.sku] || "").trim() : "",
@@ -419,11 +570,8 @@
         }
         save();
         renderAll();
-        toast(
-          "Import done: " + added + " added, " + updated + " updated" +
-          (skipped ? ", " + skipped + " skipped" : "") + ".",
-          "success"
-        );
+        toast("Import done: " + added + " added, " + updated + " updated" +
+          (skipped ? ", " + skipped + " skipped" : "") + ".", "success");
       } catch (e) {
         toast("Could not read that CSV file.", "error");
       }
@@ -431,142 +579,6 @@
     reader.onerror = function () { toast("Could not read that file.", "error"); };
     reader.readAsText(file);
   }
-
-  function firstIndex(header, names) {
-    for (var i = 0; i < names.length; i++) {
-      var idx = header.indexOf(names[i]);
-      if (idx !== -1) return idx;
-    }
-    return -1;
-  }
-  function cleanNumber(v) {
-    var n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
-    return isFinite(n) ? n : 0;
-  }
-
-  /* ---------- Barcode scanning ---------- */
-  var scanner = { stream: null, detector: null, running: false, rafId: null };
-
-  function scanSupported() {
-    return "BarcodeDetector" in window;
-  }
-
-  async function startScan() {
-    if (!scanSupported()) {
-      els.scanStatus.textContent =
-        "Camera scanning isn't supported in this browser — type the barcode instead.";
-      toast("BarcodeDetector not available; use manual entry.", "error");
-      return;
-    }
-    if (scanner.running) return;
-    try {
-      els.scanStatus.textContent = "Starting camera…";
-      scanner.detector = new window.BarcodeDetector({
-        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "codabar"],
-      });
-      scanner.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-      els.video.srcObject = scanner.stream;
-      await els.video.play();
-      els.scannerWrap.hidden = false;
-      els.startScanBtn.hidden = true;
-      els.stopScanBtn.hidden = false;
-      scanner.running = true;
-      els.scanStatus.textContent = "Point the camera at a barcode…";
-      scanLoop();
-    } catch (e) {
-      els.scanStatus.textContent =
-        "Couldn't access the camera. Check permissions, or type the barcode.";
-      toast("Camera access failed.", "error");
-      stopScan();
-    }
-  }
-
-  var lastDetected = { code: "", at: 0 };
-  async function scanLoop() {
-    if (!scanner.running) return;
-    try {
-      var codes = await scanner.detector.detect(els.video);
-      if (codes && codes.length) {
-        var value = normBarcode(codes[0].rawValue);
-        var now = Date.now();
-        // Debounce: ignore repeats of the same code within 2.5s.
-        if (value && !(value === lastDetected.code && now - lastDetected.at < 2500)) {
-          lastDetected = { code: value, at: now };
-          onScanned(value);
-        }
-      }
-    } catch (e) {
-      /* transient detect errors are fine; keep looping */
-    }
-    scanner.rafId = requestAnimationFrame(scanLoop);
-  }
-
-  function onScanned(value) {
-    if (navigator.vibrate) navigator.vibrate(60);
-    els.lookupBarcode.value = value;
-    els.scanStatus.textContent = "Scanned: " + value;
-    doLookup(value);
-    var p = findByBarcode(value);
-    if (p) {
-      toast(p.name + " — " + money(p.price), "success");
-    } else {
-      toast("Unknown barcode: " + value, "error");
-    }
-  }
-
-  function stopScan() {
-    scanner.running = false;
-    if (scanner.rafId) cancelAnimationFrame(scanner.rafId);
-    if (scanner.stream) {
-      scanner.stream.getTracks().forEach(function (t) { t.stop(); });
-      scanner.stream = null;
-    }
-    els.video.srcObject = null;
-    els.scannerWrap.hidden = true;
-    els.startScanBtn.hidden = false;
-    els.stopScanBtn.hidden = true;
-  }
-
-  /* ---------- Events ---------- */
-  els.lookupForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    doLookup(els.lookupBarcode.value);
-  });
-
-  els.addFromNotFound.addEventListener("click", function () {
-    resetForm();
-    els.fBarcode.value = normBarcode(els.notFoundBarcode.textContent);
-    els.formTitle.textContent = "Add Product";
-    els.fName.focus();
-    els.productForm.scrollIntoView({ behavior: "smooth", block: "center" });
-  });
-
-  els.productForm.addEventListener("submit", saveProduct);
-  els.cancelEditBtn.addEventListener("click", resetForm);
-
-  els.tableBody.addEventListener("click", function (e) {
-    var btn = e.target.closest("button");
-    if (!btn) return;
-    var id = btn.getAttribute("data-id");
-    if (btn.classList.contains("edit")) startEdit(id);
-    else if (btn.classList.contains("del")) deleteProduct(id);
-  });
-
-  els.search.addEventListener("input", renderTable);
-
-  els.currency.addEventListener("input", function () {
-    currency = els.currency.value || "$";
-    localStorage.setItem(CURRENCY_KEY, currency);
-    renderAll();
-    // Refresh a visible result too.
-    if (!els.result.hidden && lastScan) doLookup(lastScan);
-  });
-
-  els.startScanBtn.addEventListener("click", startScan);
-  els.stopScanBtn.addEventListener("click", stopScan);
 
   els.exportCsvBtn.addEventListener("click", exportCsv);
   els.exportJsonBtn.addEventListener("click", exportJson);
@@ -577,13 +589,11 @@
     els.importFile.value = "";
   });
 
-  window.addEventListener("beforeunload", stopScan);
+  window.addEventListener("beforeunload", closeCamera);
 
   /* ---------- Init ---------- */
   els.currency.value = currency;
-  if (!scanSupported()) {
-    els.startScanBtn.textContent = "📷 Camera scan unavailable — type below";
-    els.startScanBtn.disabled = true;
-  }
+  els.autoClear.value = String(autoClearSec);
+  showIdle();
   renderAll();
 })();

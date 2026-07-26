@@ -18,13 +18,20 @@ lets you:
 
 ## Features
 
-- **Barcode scanning** — uses your device camera via the browser's native
-  `BarcodeDetector` API (works great on Android Chrome and other modern
-  browsers). Supports EAN-13/8, UPC-A/E, Code 128, Code 39, ITF and Codabar.
-- **Manual entry fallback** — no camera or unsupported browser? Just type the
-  barcode. Handy with a USB barcode scanner too (they type like a keyboard).
-- **Instant price check** — shows the product name, category and price in a
-  clear result card. Unknown barcodes get a one-tap "Add this product" prompt.
+- **Supermarket-style kiosk screen** — a clean, minimal display that just says
+  *"Scan a barcode"*. Scan an item and the name and a big price appear, then it
+  **auto-clears back to idle after 5 seconds** (configurable) — ready for the
+  next customer. No buttons to press between scans.
+- **Auto-scan with a hardware barcode scanner** — plug in a USB or Bluetooth
+  barcode scanner (the "keyboard wedge" kind) and just scan. Keystrokes are
+  captured automatically; you never have to click into a field first.
+- **Camera scanning** — on a phone, tap **Camera** to scan with the device
+  camera via the browser's native `BarcodeDetector` API. Supports EAN-13/8,
+  UPC-A/E, Code 128, Code 39, ITF and Codabar.
+- **Manual entry fallback** — no scanner or camera? Type the barcode and press
+  Check.
+- **Manage panel** — the product database and all settings live behind the ⚙️
+  button, keeping the scan screen distraction-free.
 - **Product database** — barcode, name, price, optional cost, category and
   SKU. Auto-calculated **margin** (price − cost).
 - **Search** across name, barcode, category and SKU.
@@ -38,7 +45,10 @@ lets you:
 
 ## Usage
 
-Open `index.html` in a modern web browser. That's it.
+Open `index.html` in a modern web browser. Scan an item with your hardware
+scanner — the price shows and clears itself after a few seconds. Tap ⚙️
+(top-right) to manage products, set your currency, or change the auto-clear
+delay.
 
 > **Camera note:** Browsers only allow camera access over **HTTPS** or on
 > `localhost`. If you open the file directly (`file://`), camera scanning may be
