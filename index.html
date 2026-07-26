@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Price Check &amp; Product Database</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>🏷️ Price Check</h1>
+    <p class="tagline">Scan a barcode to check price &amp; name — and build a product database for your POS.</p>
+  </header>
+
+  <main>
+    <!-- Summary cards -->
+    <section class="summary" aria-label="Summary">
+      <div class="card">
+        <span class="card-label">Products</span>
+        <span class="card-value" id="sumCount">0</span>
+      </div>
+      <div class="card card-value-money">
+        <span class="card-label">Avg Price</span>
+        <span class="card-value" id="sumAvg">0.00</span>
+      </div>
+      <div class="card">
+        <span class="card-label">Last Scan</span>
+        <span class="card-value" id="sumLast">—</span>
+      </div>
+    </section>
+
+    <!-- Price check / scanner -->
+    <section class="check-section">
+      <h2>Price Check</h2>
+
+      <!-- Scanner -->
+      <div class="scanner">
+        <div class="scanner-video-wrap" id="scannerWrap" hidden>
+          <video id="video" playsinline muted></video>
+          <div class="scan-frame"></div>
+        </div>
+        <div class="scanner-controls">
+          <button type="button" class="btn primary" id="startScanBtn">📷 Start Camera Scan</button>
+          <button type="button" class="btn" id="stopScanBtn" hidden>Stop Camera</button>
+          <span class="hint" id="scanStatus"></span>
+        </div>
+      </div>
+
+      <!-- Manual lookup -->
+      <form id="lookupForm" class="lookup-row" autocomplete="off">
+        <label class="grow">
+          Barcode
+          <input type="text" id="lookupBarcode" inputmode="numeric" placeholder="Type or scan a barcode…" />
+        </label>
+        <button type="submit" class="btn primary">Check Price</button>
+      </form>
+
+      <!-- Result -->
+      <div id="result" class="result" hidden>
+        <div class="result-main">
+          <span class="result-name" id="resultName">—</span>
+          <span class="result-barcode" id="resultBarcode"></span>
+        </div>
+        <div class="result-price">
+          <span class="result-price-value" id="resultPrice">—</span>
+        </div>
+      </div>
+      <div id="notFound" class="not-found" hidden>
+        <p>No product found for <strong><span id="notFoundBarcode"></span></strong>.</p>
+        <button type="button" class="btn primary" id="addFromNotFound">➕ Add this product</button>
+      </div>
+    </section>
+
+    <!-- Add / edit product -->
+    <section class="form-section">
+      <h2 id="formTitle">Add Product</h2>
+      <form id="productForm" autocomplete="off">
+        <input type="hidden" id="productId" />
+        <div class="grid">
+          <label>
+            Barcode
+            <input type="text" id="fBarcode" inputmode="numeric" placeholder="e.g. 8934567890123" required />
+          </label>
+          <label>
+            Product Name
+            <input type="text" id="fName" placeholder="e.g. Coca-Cola 330ml" required />
+          </label>
+          <label>
+            Price
+            <input type="number" id="fPrice" min="0" step="0.01" placeholder="0.00" required />
+          </label>
+          <label>
+            Cost <span class="hint">optional</span>
+            <input type="number" id="fCost" min="0" step="0.01" placeholder="0.00" />
+          </label>
+          <label>
+            Category <span class="hint">optional</span>
+            <input type="text" id="fCategory" placeholder="e.g. Beverages" />
+          </label>
+          <label>
+            SKU / Stock code <span class="hint">optional</span>
+            <input type="text" id="fSku" placeholder="e.g. BEV-001" />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn primary" id="saveBtn">Save Product</button>
+          <button type="button" class="btn" id="cancelEditBtn" hidden>Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Product database -->
+    <section class="table-section">
+      <div class="table-head">
+        <div>
+          <h2 style="margin:0">Product Database</h2>
+          <span class="hint" id="dbCount">0 products</span>
+        </div>
+        <div class="table-tools">
+          <label class="currency-label">
+            Currency
+            <input type="text" id="currency" value="$" maxlength="4" />
+          </label>
+          <input type="search" id="search" class="search" placeholder="Search name / barcode…" />
+          <button type="button" class="btn" id="importBtn">Import CSV</button>
+          <button type="button" class="btn" id="exportCsvBtn">Export CSV</button>
+          <button type="button" class="btn" id="exportJsonBtn">Export JSON</button>
+          <input type="file" id="importFile" accept=".csv,text/csv" hidden />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Barcode</th>
+              <th>Name</th>
+              <th>Category</th>
+              <th class="num">Price</th>
+              <th class="num">Cost</th>
+              <th class="num">Margin</th>
+              <th class="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="emptyMsg">No products yet. Scan or add one above to get started.</p>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Data is stored locally in your browser. Use <strong>Export</strong> to back up or import into your POS later.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
