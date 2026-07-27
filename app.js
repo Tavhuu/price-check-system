@@ -19,6 +19,7 @@
   var STORAGE_KEY = "priceCheck.products.v1";
   var CURRENCY_KEY = "priceCheck.currency.v1";
   var AUTOCLEAR_KEY = "priceCheck.autoClearSec.v1";
+  var PIN_KEY = "priceCheck.pinHash.v1";
 
   /* ---------- State ---------- */
   var products = load();
@@ -32,6 +33,7 @@
   var els = {
     // kiosk
     openManage: $("openManage"),
+    fsToggle: $("fsToggle"),
     stateIdle: $("stateIdle"),
     stateFound: $("stateFound"),
     stateNotFound: $("stateNotFound"),
@@ -42,6 +44,14 @@
     countdownBar: $("countdownBar"),
     countdownBar2: $("countdownBar2"),
 
+    // pin gate
+    pinOverlay: $("pinOverlay"),
+    pinForm: $("pinForm"),
+    pinInput: $("pinInput"),
+    pinError: $("pinError"),
+    pinPad: $("pinPad"),
+    pinCancel: $("pinCancel"),
+
     // manage
     manageOverlay: $("manageOverlay"),
     managePanel: $("managePanel"),
@@ -49,6 +59,9 @@
     sumCount: $("sumCount"),
     currency: $("currency"),
     autoClear: $("autoClear"),
+    pinField: $("pinField"),
+    pinStatus: $("pinStatus"),
+    savePinBtn: $("savePinBtn"),
     productForm: $("productForm"),
     formTitle: $("formTitle"),
     productId: $("productId"),
@@ -197,6 +210,7 @@
   function openManage() {
     els.manageOverlay.hidden = false;
     els.managePanel.hidden = false;
+    updatePinStatus();
     renderAll();
   }
   function closeManage() {
@@ -204,12 +218,113 @@
     els.managePanel.hidden = true;
     resetForm();
   }
-  els.openManage.addEventListener("click", openManage);
+
+  // Tapping the gear opens Manage directly if no PIN is set, otherwise the
+  // PIN gate must be cleared first (so you can never lock yourself out).
+  function requestManage() {
+    var stored = localStorage.getItem(PIN_KEY) || "";
+    if (!stored) { openManage(); return; }
+    els.pinInput.value = "";
+    els.pinError.textContent = "";
+    els.pinOverlay.hidden = false;
+    els.pinInput.focus();
+  }
+  function closePinGate() {
+    els.pinOverlay.hidden = true;
+    els.pinInput.value = "";
+    els.pinError.textContent = "";
+  }
+  async function submitPin() {
+    var stored = localStorage.getItem(PIN_KEY) || "";
+    var entered = await hashPin(els.pinInput.value);
+    if (entered === stored) {
+      closePinGate();
+      openManage();
+    } else {
+      els.pinError.textContent = "Wrong PIN — try again.";
+      els.pinInput.value = "";
+      els.pinInput.focus();
+    }
+  }
+
+  els.openManage.addEventListener("click", requestManage);
   els.closeManage.addEventListener("click", closeManage);
   els.manageOverlay.addEventListener("click", closeManage);
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && isManageOpen()) closeManage();
+  els.pinCancel.addEventListener("click", closePinGate);
+  els.pinForm.addEventListener("submit", function (e) { e.preventDefault(); submitPin(); });
+  els.pinPad.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-key]");
+    if (!b) return;
+    var k = b.getAttribute("data-key");
+    if (k === "back") els.pinInput.value = els.pinInput.value.slice(0, -1);
+    else if (k === "ok") { /* handled by form submit */ }
+    else els.pinInput.value += k;
   });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (!els.pinOverlay.hidden) closePinGate();
+    else if (isManageOpen()) closeManage();
+  });
+
+  /* ---------- PIN storage ---------- */
+  async function hashPin(pin) {
+    var s = String(pin);
+    try {
+      if (window.crypto && crypto.subtle && window.isSecureContext) {
+        var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+        return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+          return ("0" + b.toString(16)).slice(-2);
+        }).join("");
+      }
+    } catch (e) { /* fall through to simple hash */ }
+    // Fallback (non-secure contexts, e.g. file://): deterrence only, not crypto.
+    var h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return "d" + h.toString(16);
+  }
+  function updatePinStatus() {
+    var on = !!(localStorage.getItem(PIN_KEY) || "");
+    if (els.pinStatus) els.pinStatus.textContent = on ? "on" : "off";
+  }
+  async function savePin() {
+    var v = els.pinField.value.trim();
+    if (!v) {
+      localStorage.removeItem(PIN_KEY);
+      toast("Manage PIN removed.");
+    } else if (!/^\d{3,}$/.test(v)) {
+      toast("PIN must be at least 3 digits.", "error");
+      return;
+    } else {
+      localStorage.setItem(PIN_KEY, await hashPin(v));
+      toast("Manage PIN set.", "success");
+    }
+    els.pinField.value = "";
+    updatePinStatus();
+  }
+  els.savePinBtn.addEventListener("click", savePin);
+
+  /* ---------- Fullscreen ---------- */
+  function fsElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+  function toggleFullscreen() {
+    var el = document.documentElement;
+    if (!fsElement()) {
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) { try { req.call(el); } catch (e) { toast("Fullscreen not available.", "error"); } }
+      else toast("Fullscreen isn't supported here.", "error");
+    } else {
+      var exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document);
+    }
+  }
+  function updateFsIcon() {
+    els.fsToggle.textContent = fsElement() ? "🡼" : "⛶";
+    els.fsToggle.title = fsElement() ? "Exit fullscreen" : "Fullscreen";
+  }
+  els.fsToggle.addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", updateFsIcon);
+  document.addEventListener("webkitfullscreenchange", updateFsIcon);
 
   /* ---------- Summary + table ---------- */
   function renderSummary() {
@@ -493,6 +608,8 @@
   /* ---------- Init ---------- */
   els.currency.value = currency;
   els.autoClear.value = String(autoClearSec);
+  updateFsIcon();
+  updatePinStatus();
   showIdle();
   renderAll();
 })();

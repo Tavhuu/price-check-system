@@ -9,7 +9,8 @@
 <body>
   <!-- ============ KIOSK (default, minimal) ============ -->
   <div id="kiosk" class="kiosk">
-    <button type="button" class="manage-toggle" id="openManage" aria-label="Manage products">⚙️</button>
+    <button type="button" class="corner-btn fs-toggle" id="fsToggle" aria-label="Toggle fullscreen" title="Fullscreen">⛶</button>
+    <button type="button" class="corner-btn manage-toggle" id="openManage" aria-label="Manage products">⚙️</button>
 
     <div class="kiosk-inner">
       <!-- Idle -->
@@ -39,6 +40,30 @@
     <div class="kiosk-status" id="kioskStatus"></div>
   </div>
 
+  <!-- ============ PIN GATE ============ -->
+  <div id="pinOverlay" class="overlay pin-overlay" hidden>
+    <form id="pinForm" class="pin-box" autocomplete="off">
+      <div class="pin-title">Enter PIN</div>
+      <input type="password" id="pinInput" class="pin-input" inputmode="numeric" autocomplete="off" aria-label="PIN" />
+      <div class="pin-error" id="pinError"></div>
+      <div class="pin-pad" id="pinPad">
+        <button type="button" class="pin-key" data-key="1">1</button>
+        <button type="button" class="pin-key" data-key="2">2</button>
+        <button type="button" class="pin-key" data-key="3">3</button>
+        <button type="button" class="pin-key" data-key="4">4</button>
+        <button type="button" class="pin-key" data-key="5">5</button>
+        <button type="button" class="pin-key" data-key="6">6</button>
+        <button type="button" class="pin-key" data-key="7">7</button>
+        <button type="button" class="pin-key" data-key="8">8</button>
+        <button type="button" class="pin-key" data-key="9">9</button>
+        <button type="button" class="pin-key alt" data-key="back">⌫</button>
+        <button type="button" class="pin-key" data-key="0">0</button>
+        <button type="submit" class="pin-key ok" data-key="ok">✓</button>
+      </div>
+      <button type="button" class="btn pin-cancel" id="pinCancel">Cancel</button>
+    </form>
+  </div>
+
   <!-- ============ MANAGE PANEL (drawer) ============ -->
   <div id="manageOverlay" class="overlay" hidden></div>
   <aside id="managePanel" class="manage-panel" hidden aria-label="Manage products">
@@ -66,6 +91,11 @@
           Auto-clear (seconds)
           <input type="number" id="autoClear" min="1" max="60" step="1" value="5" />
         </label>
+        <label class="currency-label">
+          Manage PIN <span class="hint" id="pinStatus">off</span>
+          <input type="password" id="pinField" inputmode="numeric" placeholder="digits; blank = off" />
+        </label>
+        <button type="button" class="btn" id="savePinBtn">Update PIN</button>
       </section>
 
       <!-- Add / edit product -->

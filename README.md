@@ -26,6 +26,12 @@ lets you:
   barcode scanner (the "keyboard wedge" kind) and just scan. Keystrokes are
   captured automatically; you never have to click into a field first. The
   scanner types the barcode and sends Enter, and the price appears instantly.
+- **Fullscreen mode** — tap ⛶ (top-left) to fill the whole screen like a real
+  price-check terminal; tap again to exit.
+- **PIN-locked management** — protect the ⚙️ Manage panel with a PIN so
+  customers can scan freely but only staff can change products or settings.
+  A touch-friendly keypad is built in. Set, change, or remove the PIN inside
+  Manage (with no PIN set, Manage opens freely so you can't get locked out).
 - **Manage panel** — the product database and all settings live behind the ⚙️
   button, keeping the scan screen distraction-free.
 - **Product database** — barcode, name, price, and optional category and SKU.
@@ -48,6 +54,12 @@ delay.
 Most USB/Bluetooth barcode scanners work in "keyboard wedge" mode out of the
 box and send an **Enter** after each barcode, which is exactly what this
 expects — plug it in and scan.
+
+**Fullscreen & PIN:** Tap ⛶ (top-left) for fullscreen. To stop customers
+changing prices, open ⚙️ Manage → set a **Manage PIN**; after that the gear
+asks for the PIN. Clear the field and press *Update PIN* to turn it off. The
+PIN is stored only in this browser (hashed), as a deterrent — not bank-grade
+security.
 
 To serve it locally (optional):
 
