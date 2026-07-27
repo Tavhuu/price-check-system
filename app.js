@@ -41,13 +41,6 @@
     notFoundCode: $("notFoundCode"),
     countdownBar: $("countdownBar"),
     countdownBar2: $("countdownBar2"),
-    manualForm: $("manualForm"),
-    manualInput: $("manualInput"),
-    cameraToggle: $("cameraToggle"),
-    cameraWrap: $("cameraWrap"),
-    cameraClose: $("cameraClose"),
-    video: $("video"),
-    kioskStatus: $("kioskStatus"),
 
     // manage
     manageOverlay: $("manageOverlay"),
@@ -199,72 +192,6 @@
       scanBuffer += e.key;
     }
   });
-
-  /* ================= MANUAL + CAMERA ================= */
-  els.manualForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var v = els.manualInput.value;
-    els.manualInput.value = "";
-    doLookup(v);
-  });
-
-  var scanner = { stream: null, detector: null, running: false, rafId: null };
-  function scanSupported() { return "BarcodeDetector" in window; }
-
-  async function openCamera() {
-    if (!scanSupported()) {
-      els.kioskStatus.textContent = "Camera scanning isn't supported here — use the barcode field or a hardware scanner.";
-      return;
-    }
-    if (scanner.running) return;
-    try {
-      els.kioskStatus.textContent = "Starting camera…";
-      scanner.detector = new window.BarcodeDetector({
-        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "codabar"],
-      });
-      scanner.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-      els.video.srcObject = scanner.stream;
-      await els.video.play();
-      els.cameraWrap.hidden = false;
-      scanner.running = true;
-      els.kioskStatus.textContent = "Point the camera at a barcode…";
-      scanLoop();
-    } catch (e) {
-      els.kioskStatus.textContent = "Couldn't access the camera. Check permissions or use the barcode field.";
-      closeCamera();
-    }
-  }
-
-  var lastDetected = { code: "", at: 0 };
-  async function scanLoop() {
-    if (!scanner.running) return;
-    try {
-      var codes = await scanner.detector.detect(els.video);
-      if (codes && codes.length) {
-        var value = normBarcode(codes[0].rawValue);
-        var now = Date.now();
-        if (value && !(value === lastDetected.code && now - lastDetected.at < 2500)) {
-          lastDetected = { code: value, at: now };
-          doLookup(value);
-        }
-      }
-    } catch (e) { /* transient detect errors are fine */ }
-    scanner.rafId = requestAnimationFrame(scanLoop);
-  }
-
-  function closeCamera() {
-    scanner.running = false;
-    if (scanner.rafId) cancelAnimationFrame(scanner.rafId);
-    if (scanner.stream) { scanner.stream.getTracks().forEach(function (t) { t.stop(); }); scanner.stream = null; }
-    els.video.srcObject = null;
-    els.cameraWrap.hidden = true;
-    els.kioskStatus.textContent = "";
-  }
-
-  els.cameraToggle.addEventListener("click", function () {
-    if (scanner.running) closeCamera(); else openCamera();
-  });
-  els.cameraClose.addEventListener("click", closeCamera);
 
   /* ================= MANAGE PANEL ================= */
   function openManage() {
@@ -562,8 +489,6 @@
     if (file) importCsv(file);
     els.importFile.value = "";
   });
-
-  window.addEventListener("beforeunload", closeCamera);
 
   /* ---------- Init ---------- */
   els.currency.value = currency;

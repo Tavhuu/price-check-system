@@ -24,12 +24,8 @@ lets you:
   next customer. No buttons to press between scans.
 - **Auto-scan with a hardware barcode scanner** — plug in a USB or Bluetooth
   barcode scanner (the "keyboard wedge" kind) and just scan. Keystrokes are
-  captured automatically; you never have to click into a field first.
-- **Camera scanning** — on a phone, tap **Camera** to scan with the device
-  camera via the browser's native `BarcodeDetector` API. Supports EAN-13/8,
-  UPC-A/E, Code 128, Code 39, ITF and Codabar.
-- **Manual entry fallback** — no scanner or camera? Type the barcode and press
-  Check.
+  captured automatically; you never have to click into a field first. The
+  scanner types the barcode and sends Enter, and the price appears instantly.
 - **Manage panel** — the product database and all settings live behind the ⚙️
   button, keeping the scan screen distraction-free.
 - **Product database** — barcode, name, price, and optional category and SKU.
@@ -49,12 +45,11 @@ scanner — the price shows and clears itself after a few seconds. Tap ⚙️
 (top-right) to manage products, set your currency, or change the auto-clear
 delay.
 
-> **Camera note:** Browsers only allow camera access over **HTTPS** or on
-> `localhost`. If you open the file directly (`file://`), camera scanning may be
-> blocked by the browser — serve it locally (below) or host it over HTTPS, or
-> just use manual / USB-scanner entry.
+Most USB/Bluetooth barcode scanners work in "keyboard wedge" mode out of the
+box and send an **Enter** after each barcode, which is exactly what this
+expects — plug it in and scan.
 
-To serve it locally (recommended for camera use):
+To serve it locally (optional):
 
 ```bash
 python3 -m http.server 8000
