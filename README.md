@@ -32,8 +32,7 @@ lets you:
   Check.
 - **Manage panel** — the product database and all settings live behind the ⚙️
   button, keeping the scan screen distraction-free.
-- **Product database** — barcode, name, price, optional cost, category and
-  SKU. Auto-calculated **margin** (price − cost).
+- **Product database** — barcode, name, price, and optional category and SKU.
 - **Search** across name, barcode, category and SKU.
 - **Import CSV** — bulk-load an existing product list. Column names are matched
   flexibly (e.g. `upc`/`ean`/`code` → barcode, `retail`/`sell` → price).
@@ -71,7 +70,6 @@ Use **Export CSV**. The file has these columns:
 | `barcode`  | The scanned barcode / UPC / EAN  |
 | `name`     | Product name                     |
 | `price`    | Selling price                    |
-| `cost`     | Cost price (optional)            |
 | `category` | Product category (optional)      |
 | `sku`      | Stock code (optional)            |
 
@@ -86,7 +84,6 @@ common aliases:
 - barcode: `barcode`, `upc`, `ean`, `code`
 - name: `name`, `product`, `product name`, `description`, `item`
 - price: `price`, `sell`, `retail`, `unit price`
-- cost: `cost`, `buy`, `wholesale`
 - category: `category`, `group`, `dept`
 - sku: `sku`, `stock code`
 

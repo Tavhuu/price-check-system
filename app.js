@@ -25,7 +25,6 @@
   var editingId = null;
   var currency = localStorage.getItem(CURRENCY_KEY) || "$";
   var autoClearSec = clampInt(localStorage.getItem(AUTOCLEAR_KEY), 1, 60, 5);
-  var lastScan = "";
   var clearTimer = null;
 
   /* ---------- Elements ---------- */
@@ -55,8 +54,6 @@
     managePanel: $("managePanel"),
     closeManage: $("closeManage"),
     sumCount: $("sumCount"),
-    sumAvg: $("sumAvg"),
-    sumLast: $("sumLast"),
     currency: $("currency"),
     autoClear: $("autoClear"),
     productForm: $("productForm"),
@@ -65,7 +62,6 @@
     fBarcode: $("fBarcode"),
     fName: $("fName"),
     fPrice: $("fPrice"),
-    fCost: $("fCost"),
     fCategory: $("fCategory"),
     fSku: $("fSku"),
     saveBtn: $("saveBtn"),
@@ -156,7 +152,6 @@
   function doLookup(barcode) {
     var b = normBarcode(barcode);
     if (!b) return;
-    lastScan = b;
 
     var p = findByBarcode(b);
     if (p) {
@@ -173,7 +168,6 @@
       if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
     }
     armAutoClear();
-    renderSummary();
   }
 
   /* ================= HARDWARE SCANNER (keyboard wedge) ================= */
@@ -293,13 +287,6 @@
   /* ---------- Summary + table ---------- */
   function renderSummary() {
     els.sumCount.textContent = String(products.length);
-    var sum = 0, n = 0;
-    for (var i = 0; i < products.length; i++) {
-      var p = Number(products[i].price);
-      if (isFinite(p)) { sum += p; n++; }
-    }
-    els.sumAvg.textContent = n ? money(sum / n) : money(0);
-    els.sumLast.textContent = lastScan || "—";
   }
 
   function renderTable() {
@@ -335,19 +322,11 @@
     rows.forEach(function (p) {
       var tr = document.createElement("tr");
       var price = Number(p.price);
-      var cost = p.cost === "" || p.cost == null ? null : Number(p.cost);
-      var marginHtml = "—";
-      if (cost != null && isFinite(cost) && isFinite(price)) {
-        var m = price - cost;
-        marginHtml = '<span class="' + (m >= 0 ? "margin-pos" : "margin-neg") + '">' + money(m) + "</span>";
-      }
       tr.innerHTML =
         '<td class="barcode-cell">' + escapeHtml(p.barcode) + "</td>" +
         "<td>" + escapeHtml(p.name) + "</td>" +
         "<td>" + escapeHtml(p.category || "") + "</td>" +
         '<td class="num">' + money(price) + "</td>" +
-        '<td class="num">' + (cost != null && isFinite(cost) ? money(cost) : "—") + "</td>" +
-        '<td class="num">' + marginHtml + "</td>" +
         '<td class="actions-col">' +
           '<button class="row-btn edit" data-id="' + p.id + '">Edit</button>' +
           '<button class="row-btn del" data-id="' + p.id + '">Delete</button>' +
@@ -369,7 +348,6 @@
     els.fBarcode.value = p.barcode || "";
     els.fName.value = p.name || "";
     els.fPrice.value = p.price != null ? p.price : "";
-    els.fCost.value = p.cost != null ? p.cost : "";
     els.fCategory.value = p.category || "";
     els.fSku.value = p.sku || "";
     els.formTitle.textContent = "Edit Product";
@@ -406,7 +384,6 @@
       barcode: barcode,
       name: name,
       price: Number(price),
-      cost: els.fCost.value === "" ? "" : Number(els.fCost.value),
       category: els.fCategory.value.trim(),
       sku: els.fSku.value.trim(),
     };
@@ -463,7 +440,7 @@
   });
 
   /* ---------- CSV import / export ---------- */
-  var CSV_HEADERS = ["barcode", "name", "price", "cost", "category", "sku"];
+  var CSV_HEADERS = ["barcode", "name", "price", "category", "sku"];
   function csvEscape(v) {
     var s = String(v == null ? "" : v);
     if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -534,7 +511,6 @@
         idx.barcode = firstIndex(header, ["barcode", "upc", "ean", "code"]);
         idx.name = firstIndex(header, ["name", "product", "product name", "description", "item"]);
         idx.price = firstIndex(header, ["price", "sell", "retail", "unit price"]);
-        idx.cost = firstIndex(header, ["cost", "buy", "wholesale"]);
         idx.category = firstIndex(header, ["category", "group", "dept"]);
         idx.sku = firstIndex(header, ["sku", "stock code"]);
         if (idx.barcode < 0 || idx.name < 0) {
@@ -547,12 +523,10 @@
           var barcode = normBarcode(cells[idx.barcode]);
           var name = String(cells[idx.name] || "").trim();
           if (!barcode || !name) { skipped++; continue; }
-          var costRaw = idx.cost >= 0 ? cells[idx.cost] : "";
           var rec = {
             barcode: barcode,
             name: name,
             price: idx.price >= 0 ? cleanNumber(cells[idx.price]) : 0,
-            cost: costRaw === "" || costRaw == null ? "" : cleanNumber(costRaw),
             category: idx.category >= 0 ? String(cells[idx.category] || "").trim() : "",
             sku: idx.sku >= 0 ? String(cells[idx.sku] || "").trim() : "",
           };
