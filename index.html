@@ -36,23 +36,6 @@
         <div class="countdown"><span class="countdown-bar" id="countdownBar2"></span></div>
       </div>
     </div>
-
-    <!-- Subtle fallback controls (phone / no hardware scanner) -->
-    <div class="kiosk-fallback">
-      <form id="manualForm" autocomplete="off">
-        <input type="text" id="manualInput" inputmode="numeric" placeholder="Type a barcode…" aria-label="Type a barcode" />
-        <button type="submit" class="btn">Check</button>
-      </form>
-      <button type="button" class="btn ghost" id="cameraToggle">📷 Camera</button>
-    </div>
-
-    <!-- Camera (hidden until toggled) -->
-    <div class="camera-wrap" id="cameraWrap" hidden>
-      <video id="video" playsinline muted></video>
-      <div class="scan-frame"></div>
-      <button type="button" class="btn ghost camera-close" id="cameraClose">Close camera</button>
-    </div>
-
     <div class="kiosk-status" id="kioskStatus"></div>
   </div>
 
