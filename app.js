@@ -47,6 +47,8 @@
     stateNotFound: $("stateNotFound"),
     foundName: $("foundName"),
     foundPrice: $("foundPrice"),
+    foundDeal: $("foundDeal"),
+    foundNote: $("foundNote"),
     foundMeta: $("foundMeta"),
     notFoundCode: $("notFoundCode"),
     countdownBar: $("countdownBar"),
@@ -78,6 +80,8 @@
     fName: $("fName"),
     fPrice: $("fPrice"),
     fCategory: $("fCategory"),
+    fDeal: $("fDeal"),
+    fNote: $("fNote"),
     saveBtn: $("saveBtn"),
     cancelEditBtn: $("cancelEditBtn"),
     search: $("search"),
@@ -259,6 +263,11 @@
     if (p) {
       els.foundName.textContent = p.name;
       els.foundPrice.textContent = money(p.price);
+      // Optional offer and comment - hidden entirely when not set.
+      els.foundDeal.textContent = p.deal || "";
+      els.foundDeal.hidden = !p.deal;
+      els.foundNote.textContent = p.note || "";
+      els.foundNote.hidden = !p.note;
       els.foundMeta.textContent = p.barcode + (p.category ? "  ·  " + p.category : "");
       showState("found");
       runCountdown(els.countdownBar);
@@ -460,7 +469,9 @@
       return (
         String(p.name || "").toLowerCase().indexOf(q) !== -1 ||
         String(p.barcode || "").toLowerCase().indexOf(q) !== -1 ||
-        String(p.category || "").toLowerCase().indexOf(q) !== -1
+        String(p.category || "").toLowerCase().indexOf(q) !== -1 ||
+        String(p.deal || "").toLowerCase().indexOf(q) !== -1 ||
+        String(p.note || "").toLowerCase().indexOf(q) !== -1
       );
     });
 
@@ -490,6 +501,8 @@
         "<td>" + escapeHtml(p.name) + "</td>" +
         "<td>" + escapeHtml(p.category || "") + "</td>" +
         '<td class="num">' + money(price) + "</td>" +
+        '<td class="deal-cell">' + escapeHtml(p.deal || "") + "</td>" +
+        '<td class="note-cell">' + escapeHtml(p.note || "") + "</td>" +
         '<td class="actions-col">' +
           '<button class="row-btn edit" data-id="' + p.id + '">Edit</button>' +
           '<button class="row-btn del" data-id="' + p.id + '">Delete</button>' +
@@ -512,6 +525,8 @@
     els.fName.value = p.name || "";
     els.fPrice.value = p.price != null ? p.price : "";
     els.fCategory.value = p.category || "";
+    els.fDeal.value = p.deal || "";
+    els.fNote.value = p.note || "";
     els.formTitle.textContent = "Edit Product";
     els.saveBtn.textContent = "Update Product";
     els.cancelEditBtn.hidden = false;
@@ -547,6 +562,8 @@
       name: name,
       price: Number(price),
       category: els.fCategory.value.trim(),
+      deal: els.fDeal.value.trim(),
+      note: els.fNote.value.trim(),
     };
     if (editingId) {
       for (var i = 0; i < products.length; i++) {
@@ -607,7 +624,7 @@
   });
 
   /* ---------- CSV import / export ---------- */
-  var CSV_HEADERS = ["barcode", "name", "price", "category"];
+  var CSV_HEADERS = ["barcode", "name", "price", "category", "deal", "note"];
   function csvEscape(v) {
     var s = String(v == null ? "" : v);
     if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -679,6 +696,8 @@
         idx.name = firstIndex(header, ["name", "product", "product name", "description", "item"]);
         idx.price = firstIndex(header, ["price", "sell", "retail", "unit price"]);
         idx.category = firstIndex(header, ["category", "group", "dept"]);
+        idx.deal = firstIndex(header, ["deal", "offer", "promo", "promotion", "special"]);
+        idx.note = firstIndex(header, ["note", "comment", "comments", "remark"]);
         if (idx.barcode < 0 || idx.name < 0) {
           toast("CSV needs at least 'barcode' and 'name' columns.", "error");
           return;
@@ -694,6 +713,8 @@
             name: name,
             price: idx.price >= 0 ? cleanNumber(cells[idx.price]) : 0,
             category: idx.category >= 0 ? String(cells[idx.category] || "").trim() : "",
+            deal: idx.deal >= 0 ? String(cells[idx.deal] || "").trim() : "",
+            note: idx.note >= 0 ? String(cells[idx.note] || "").trim() : "",
           };
           var existing = findByBarcode(barcode);
           if (existing) {

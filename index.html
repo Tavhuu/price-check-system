@@ -29,6 +29,8 @@
       <div class="kiosk-state" id="stateFound" hidden>
         <div class="found-name" id="foundName">—</div>
         <div class="found-price" id="foundPrice">—</div>
+        <div class="found-deal" id="foundDeal" hidden></div>
+        <div class="found-note" id="foundNote" hidden></div>
         <div class="found-meta" id="foundMeta"></div>
         <div class="countdown"><span class="countdown-bar" id="countdownBar"></span></div>
       </div>
@@ -125,6 +127,14 @@
               Category <span class="hint">optional</span>
               <input type="text" id="fCategory" placeholder="e.g. Beverages" />
             </label>
+            <label>
+              Deal / Offer <span class="hint">shown big on the screen</span>
+              <input type="text" id="fDeal" placeholder="e.g. 2 for $9.00" />
+            </label>
+            <label>
+              Comment <span class="hint">optional, shown under the deal</span>
+              <input type="text" id="fNote" placeholder="e.g. while stocks last" />
+            </label>
           </div>
           <div class="form-actions">
             <button type="submit" class="btn primary" id="saveBtn">Save Product</button>
@@ -156,6 +166,8 @@
                 <th>Name</th>
                 <th>Category</th>
                 <th class="num">Price</th>
+                <th>Deal</th>
+                <th>Comment</th>
                 <th class="actions-col">Actions</th>
               </tr>
             </thead>

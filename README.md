@@ -67,8 +67,12 @@ nothing leaves your network.
   Manage (with no PIN set, Manage opens freely so you can't get locked out).
 - **Manage panel** — the product database and all settings live behind the ⚙️
   button, keeping the scan screen distraction-free.
+- **Deals & comments** — give a product an offer like `2 for $9.00` and it
+  appears as a big highlighted badge under the price when the item is scanned.
+  An optional comment line (`while stocks last`, `fridge only`…) shows beneath
+  it. Both are optional; products without them look exactly as before.
 - **Product database** — barcode, name, price, and an optional category.
-- **Search** across name, barcode and category.
+- **Search** across name, barcode, category, deal and comment.
 - **Import CSV** — bulk-load an existing product list. Column names are matched
   flexibly (e.g. `upc`/`ean`/`code` → barcode, `retail`/`sell` → price).
   Existing barcodes are updated, new ones are added.
@@ -223,6 +227,8 @@ Use **Export CSV**. The file has these columns:
 | `name`     | Product name                     |
 | `price`    | Selling price                    |
 | `category` | Product category (optional)      |
+| `deal`     | Offer text, e.g. 2 for $9.00 (optional) |
+| `note`     | Comment shown under the deal (optional) |
 
 Most POS systems accept a CSV like this directly, or let you map these columns
 during import. Prefer structured data? Use **Export JSON**.
@@ -236,6 +242,8 @@ common aliases:
 - name: `name`, `product`, `product name`, `description`, `item`
 - price: `price`, `sell`, `retail`, `unit price`
 - category: `category`, `group`, `dept`
+- deal: `deal`, `offer`, `promo`, `promotion`, `special`
+- note: `note`, `comment`, `comments`, `remark`
 
 Rows whose barcode already exists in the database are **updated**; new barcodes
 are **added**.

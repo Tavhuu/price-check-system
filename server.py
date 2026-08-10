@@ -35,7 +35,11 @@ DEFAULT_PORT = 8000
 MAX_BODY = 32 * 1024 * 1024  # cap so a bad request can't exhaust memory
 
 PRODUCT_FIELDS = ("id", "barcode", "name", "price", "category", "sku",
-                  "createdAt", "updatedAt")
+                  "deal", "note", "createdAt", "updatedAt")
+
+# Columns added after the first release; existing databases are upgraded in
+# place so no one loses their products.
+ADDED_COLUMNS = ("deal", "note")
 
 _lock = threading.Lock()
 
@@ -66,6 +70,8 @@ def init_db():
                 price     REAL NOT NULL DEFAULT 0,
                 category  TEXT NOT NULL DEFAULT '',
                 sku       TEXT NOT NULL DEFAULT '',
+                deal      TEXT NOT NULL DEFAULT '',
+                note      TEXT NOT NULL DEFAULT '',
                 createdAt TEXT NOT NULL DEFAULT '',
                 updatedAt TEXT NOT NULL DEFAULT ''
             );
@@ -80,6 +86,15 @@ def init_db():
             INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0');
             """
         )
+        conn.commit()
+
+        # Upgrade an older database in place: add any columns it predates.
+        existing = {r["name"] for r in conn.execute("PRAGMA table_info(products)")}
+        for col in ADDED_COLUMNS:
+            if col not in existing:
+                conn.execute(
+                    "ALTER TABLE products ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % col)
+                print("  Added the '%s' column to the existing database." % col)
         conn.commit()
 
         if fresh and os.path.exists(LEGACY_JSON):
@@ -155,6 +170,8 @@ def _write(conn, products, settings):
             price,
             str(p.get("category") or ""),
             str(p.get("sku") or ""),
+            str(p.get("deal") or ""),
+            str(p.get("note") or ""),
             str(p.get("createdAt") or ""),
             str(p.get("updatedAt") or ""),
         ))
@@ -163,7 +180,7 @@ def _write(conn, products, settings):
         conn.execute("DELETE FROM products")
         conn.executemany(
             "INSERT INTO products (id, barcode, name, price, category, sku,"
-            " createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)", rows)
+            " deal, note, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?)", rows)
         conn.execute("DELETE FROM settings")
         conn.executemany(
             "INSERT INTO settings (key, value) VALUES (?,?)",
