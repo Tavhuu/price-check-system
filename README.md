@@ -61,7 +61,16 @@ asks for the PIN. Clear the field and press *Update PIN* to turn it off. The
 PIN is stored only in this browser (hashed), as a deterrent — not bank-grade
 security.
 
-To serve it locally (optional):
+### Running it on a Windows PC
+
+Double-click **`server.bat`**. It starts a local web server for this folder
+and opens the price checker in your browser at `http://localhost:8000/`. Keep
+the little black window open while you use the app; close it (or press Ctrl+C)
+to stop. It uses Python if installed, otherwise PHP or Node; if none are found
+it tells you to install Python from <https://www.python.org/downloads/> (tick
+*"Add Python to PATH"* during setup).
+
+### Serving it manually (any OS)
 
 ```bash
 python3 -m http.server 8000
