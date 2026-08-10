@@ -99,67 +99,32 @@ asks for the PIN. Clear the field and press *Update PIN* to turn it off. The
 PIN is stored only in this browser (hashed), as a deterrent — not bank-grade
 security.
 
-### Running it on a Windows PC
+### Starting and stopping the host
 
-Double-click **`server.bat`**. It starts a local web server for this folder
-and opens the price checker in your browser at `http://localhost:8000/`. Keep
-the little black window open while you use the app; close it (or press Ctrl+C)
-to stop. It uses Python if installed, otherwise PHP or Node; if none are found
-it tells you to install Python from <https://www.python.org/downloads/> (tick
-*"Add Python to PATH"* during setup).
+Double-click **`host.bat`** on the PC. Leave the window open — it *is* the
+server. It restarts itself automatically if it stops. To shut down, press
+**Ctrl+C** twice or close the window.
 
-**Friendly URL (optional):** if you'd rather open `http://pricecheck.local:8000/`
-than `localhost`, run **`set-hostname.bat`** once (approve the administrator
-prompt). It adds a single line to the Windows hosts file mapping
-`pricecheck.local` to this PC. After that, `server.bat` opens the friendly URL
-automatically; if the hostname isn't set up it just falls back to `localhost`.
-To change the name, edit `HOSTNAME` at the top of both files. To undo, remove
-the `pricecheck.local` line from `C:\Windows\System32\drivers\etc\hosts`.
-(The `.local` name only works on this PC — it's a local alias, not a public
-web address.)
-
-### Always-on POS mode (Windows)
-
-For a till/terminal that should just always be running, double-click
-**`kiosk.bat`**. It behaves like a point-of-sale terminal:
-
-- **Server auto-restart** — starts the local server and automatically
-  restarts it if it ever stops.
-- **Fullscreen** — opens the app in Chrome/Edge **kiosk mode** (true
-  fullscreen, no tabs or address bar). Falls back to your default browser if
-  neither is installed.
-- **Browser auto-reopen** — if the fullscreen window is closed, it reopens
-  after a couple of seconds.
-
-**Start on login:** run **`install-startup.bat`** once (no admin needed) and the
-kiosk launches automatically every time Windows logs in. Undo it with
-**`uninstall-startup.bat`**.
-
-**To stop the kiosk:** press **Alt+F4** to close the fullscreen browser, then
-close the small minimized *"Price Check Server"* window.
-
-### Serving it manually (any OS)
+On macOS/Linux, or to run it by hand:
 
 ```bash
-python3 -m http.server 8000
-# then visit http://localhost:8000
+python3 server.py        # port 8000
+python3 server.py 8080   # custom port
 ```
 
-## Batch files at a glance (Windows)
+To change the port on Windows, edit `set "PORT=8000"` at the top of
+`host.bat` (and re-run `allow-firewall.bat`, which opens port 8000).
 
-| File                    | What it does                                              |
-|-------------------------|-----------------------------------------------------------|
-| `host.bat`              | **Host for tablets.** Shared database + auto-restart.     |
-| `allow-firewall.bat`    | One-time: let tablets reach this PC (admin).              |
-| `server.bat`            | Start the server once and open the browser (simple use).  |
-| `kiosk.bat`             | POS mode: auto-restart server + fullscreen + auto-reopen. |
-| `install-startup.bat`   | Make `kiosk.bat` launch automatically at login.           |
-| `uninstall-startup.bat` | Remove the auto-start.                                     |
-| `set-hostname.bat`      | One-time: enable `http://pricecheck.local:8000/`.         |
+## Files
 
-`host.bat` and `kiosk.bat` both run `server.py`, so both give tablets the
-shared database. Use `host.bat` when the PC is just the server, and
-`kiosk.bat` when the PC is *also* a scanning terminal.
+| File                 | What it is                                          |
+|----------------------|-----------------------------------------------------|
+| `index.html`         | Page structure                                      |
+| `styles.css`         | Styling (dark theme, responsive)                    |
+| `app.js`             | Scanning, lookup, database, sync                    |
+| `server.py`          | The host: shared database + serves the app          |
+| `host.bat`           | Windows: run the host, with auto-restart            |
+| `allow-firewall.bat` | Windows, one-time: let tablets reach this PC        |
 
 ## Where the data lives
 
@@ -197,16 +162,14 @@ common aliases:
 Rows whose barcode already exists in the database are **updated**; new barcodes
 are **added**.
 
-## Files
-
-| File         | Purpose                              |
-|--------------|--------------------------------------|
-| `index.html` | Page structure                       |
-| `styles.css` | Styling (dark theme, responsive)     |
-| `app.js`     | Scanning, lookup, database & storage |
-
 ## Notes
 
-Data lives in the browser that created it. Clearing browser data or switching
-browsers/devices will not carry products over — use **Export** to keep a copy or
-move it to your POS.
+- **The PC must be on** and running `host.bat` for tablets to work — it holds
+  the database; the tablets are just screens.
+- **Same Wi-Fi**, and Windows must treat that network as **Private** (the
+  firewall rule deliberately does not cover public networks).
+- **Back up `data.json`** on the host — that single file is your whole product
+  database. **Export CSV/JSON** from the Manage panel also works as a backup and
+  is what you'll feed into the POS later.
+- Without a host (opening the files directly), each browser keeps its own
+  separate list — fine for trying it out, but not for the shop.
