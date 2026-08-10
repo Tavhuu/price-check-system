@@ -80,12 +80,42 @@ the `pricecheck.local` line from `C:\Windows\System32\drivers\etc\hosts`.
 (The `.local` name only works on this PC — it's a local alias, not a public
 web address.)
 
+### Always-on POS mode (Windows)
+
+For a till/terminal that should just always be running, double-click
+**`kiosk.bat`**. It behaves like a point-of-sale terminal:
+
+- **Server auto-restart** — starts the local server and automatically
+  restarts it if it ever stops.
+- **Fullscreen** — opens the app in Chrome/Edge **kiosk mode** (true
+  fullscreen, no tabs or address bar). Falls back to your default browser if
+  neither is installed.
+- **Browser auto-reopen** — if the fullscreen window is closed, it reopens
+  after a couple of seconds.
+
+**Start on login:** run **`install-startup.bat`** once (no admin needed) and the
+kiosk launches automatically every time Windows logs in. Undo it with
+**`uninstall-startup.bat`**.
+
+**To stop the kiosk:** press **Alt+F4** to close the fullscreen browser, then
+close the small minimized *"Price Check Server"* window.
+
 ### Serving it manually (any OS)
 
 ```bash
 python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
+
+## Batch files at a glance (Windows)
+
+| File                    | What it does                                             |
+|-------------------------|----------------------------------------------------------|
+| `server.bat`            | Start the server once and open the browser (simple use). |
+| `kiosk.bat`             | POS mode: auto-restart server + fullscreen + auto-reopen.|
+| `install-startup.bat`   | Make `kiosk.bat` launch automatically at login.          |
+| `uninstall-startup.bat` | Remove the auto-start.                                    |
+| `set-hostname.bat`      | One-time: enable `http://pricecheck.local:8000/`.        |
 
 ## Importing into your POS later
 
