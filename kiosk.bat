@@ -76,12 +76,13 @@ goto runserver
 
 REM ------------------------------------------------------------
 :find_server
+REM Prefer server.py - it hosts the shared database that tablets connect to.
 set "SRV="
-where py >nul 2>nul && set "SRV=py -3 -m http.server %PORT%"
+where py >nul 2>nul && set "SRV=py -3 server.py %PORT%"
 if defined SRV exit /b
-where python >nul 2>nul && set "SRV=python -m http.server %PORT%"
+where python >nul 2>nul && set "SRV=python server.py %PORT%"
 if defined SRV exit /b
-where python3 >nul 2>nul && set "SRV=python3 -m http.server %PORT%"
+where python3 >nul 2>nul && set "SRV=python3 server.py %PORT%"
 if defined SRV exit /b
 where php >nul 2>nul && set "SRV=php -S localhost:%PORT%"
 if defined SRV exit /b

@@ -1,16 +1,19 @@
 /* Price Check — supermarket-style kiosk
- * Self-contained: no build step, no server, no dependencies.
  *
  * Scanning:
  *   - Hardware barcode scanner (USB/Bluetooth "keyboard wedge"): captured
  *     globally — just scan, no need to click anything. The scanner types the
  *     digits fast and sends Enter; we look up the price instantly.
- *   - Manual entry and phone camera (native BarcodeDetector) also supported.
  *
  * After a result is shown it auto-clears back to "Scan a barcode" after a
  * configurable delay (default 5 seconds).
  *
- * Data lives in localStorage.
+ * Storage — two modes, detected automatically at startup:
+ *   - HOST mode: served by server.py, which keeps ONE shared database for
+ *     every device on the Wi-Fi (PC + tablets), like a POS. Changes made on
+ *     any device appear on the others within a few seconds.
+ *   - LOCAL mode: opened as a plain file or from static hosting (e.g. GitHub
+ *     Pages). Falls back to this browser's localStorage, as before.
  */
 
 (function () {
@@ -21,11 +24,16 @@
   var AUTOCLEAR_KEY = "priceCheck.autoClearSec.v1";
   var PIN_KEY = "priceCheck.pinHash.v1";
 
+  var POLL_MS = 4000; // how often a device checks the host for changes
+
   /* ---------- State ---------- */
-  var products = load();
+  var backend = "local";   // "server" once the host API answers
+  var serverRev = -1;      // last revision seen from the host
+  var products = [];
+  var currency = "$";
+  var autoClearSec = 5;
+  var pinHash = "";
   var editingId = null;
-  var currency = localStorage.getItem(CURRENCY_KEY) || "$";
-  var autoClearSec = clampInt(localStorage.getItem(AUTOCLEAR_KEY), 1, 60, 5);
   var clearTimer = null;
 
   /* ---------- Elements ---------- */
@@ -82,14 +90,101 @@
     dbCount: $("dbCount"),
   };
 
-  /* ---------- Persistence ---------- */
-  function load() {
+  /* ---------- Persistence ----------
+   * In HOST mode the whole database lives on the PC running server.py and is
+   * shared by every device. In LOCAL mode it lives in this browser only.
+   */
+  function applySettings(s) {
+    s = s || {};
+    currency = s.currency || "$";
+    autoClearSec = clampInt(s.autoClearSec, 1, 60, 5);
+    pinHash = s.pinHash || "";
+  }
+  function currentSettings() {
+    return { currency: currency, autoClearSec: autoClearSec, pinHash: pinHash };
+  }
+
+  function loadLocal() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
+      products = raw ? JSON.parse(raw) : [];
+    } catch (e) { products = []; }
+    applySettings({
+      currency: localStorage.getItem(CURRENCY_KEY) || "$",
+      autoClearSec: localStorage.getItem(AUTOCLEAR_KEY),
+      pinHash: localStorage.getItem(PIN_KEY) || "",
+    });
   }
-  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(products)); }
+  function saveLocal() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+    localStorage.setItem(CURRENCY_KEY, currency);
+    localStorage.setItem(AUTOCLEAR_KEY, String(autoClearSec));
+    if (pinHash) localStorage.setItem(PIN_KEY, pinHash);
+    else localStorage.removeItem(PIN_KEY);
+  }
+
+  // Detect the host API. Absent (static hosting / file://) => local mode.
+  async function detectBackend() {
+    // Opened straight from disk: no server can exist, and probing would only
+    // log a confusing CORS error. Go local immediately.
+    if (location.protocol === "file:") { backend = "local"; loadLocal(); return; }
+    try {
+      var res = await fetch("api/data", { cache: "no-store" });
+      if (!res.ok) throw new Error("no api");
+      var data = await res.json();
+      backend = "server";
+      serverRev = data.rev || 0;
+      products = Array.isArray(data.products) ? data.products : [];
+      applySettings(data.settings);
+      return;
+    } catch (e) {
+      backend = "local";
+      loadLocal();
+    }
+  }
+
+  var saveQueue = Promise.resolve();
+  function save() {
+    if (backend !== "server") { saveLocal(); return saveQueue; }
+    // Serialise writes so rapid edits can't race each other.
+    saveQueue = saveQueue.then(async function () {
+      try {
+        var res = await fetch("api/data", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ products: products, settings: currentSettings() }),
+        });
+        if (!res.ok) throw new Error("save failed");
+        var data = await res.json();
+        serverRev = data.rev || serverRev;
+      } catch (e) {
+        toast("Could not save to the host — check the connection.", "error");
+      }
+    });
+    return saveQueue;
+  }
+
+  // Pick up changes made on other devices.
+  async function pollHost() {
+    if (backend !== "server") return;
+    try {
+      var res = await fetch("api/rev", { cache: "no-store" });
+      if (!res.ok) return;
+      var rev = (await res.json()).rev || 0;
+      if (rev === serverRev) return;
+      var full = await (await fetch("api/data", { cache: "no-store" })).json();
+      serverRev = full.rev || 0;
+      products = Array.isArray(full.products) ? full.products : [];
+      applySettings(full.settings);
+      // Refresh the UI, but never yank a form the user is filling in.
+      if (isManageOpen() && !editingId) {
+        els.currency.value = currency;
+        els.autoClear.value = String(autoClearSec);
+        updatePinStatus();
+      }
+      renderAll();
+    } catch (e) { /* host briefly unreachable; try again next tick */ }
+  }
 
   /* ---------- Helpers ---------- */
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -222,8 +317,7 @@
   // Tapping the gear opens Manage directly if no PIN is set, otherwise the
   // PIN gate must be cleared first (so you can never lock yourself out).
   function requestManage() {
-    var stored = localStorage.getItem(PIN_KEY) || "";
-    if (!stored) { openManage(); return; }
+    if (!pinHash) { openManage(); return; }
     els.pinInput.value = "";
     els.pinError.textContent = "";
     els.pinOverlay.hidden = false;
@@ -235,9 +329,8 @@
     els.pinError.textContent = "";
   }
   async function submitPin() {
-    var stored = localStorage.getItem(PIN_KEY) || "";
     var entered = await hashPin(els.pinInput.value);
-    if (entered === stored) {
+    if (entered === pinHash) {
       closePinGate();
       openManage();
     } else {
@@ -283,22 +376,22 @@
     return "d" + h.toString(16);
   }
   function updatePinStatus() {
-    var on = !!(localStorage.getItem(PIN_KEY) || "");
-    if (els.pinStatus) els.pinStatus.textContent = on ? "on" : "off";
+    if (els.pinStatus) els.pinStatus.textContent = pinHash ? "on" : "off";
   }
   async function savePin() {
     var v = els.pinField.value.trim();
     if (!v) {
-      localStorage.removeItem(PIN_KEY);
+      pinHash = "";
       toast("Manage PIN removed.");
     } else if (!/^\d{3,}$/.test(v)) {
       toast("PIN must be at least 3 digits.", "error");
       return;
     } else {
-      localStorage.setItem(PIN_KEY, await hashPin(v));
+      pinHash = await hashPin(v);
       toast("Manage PIN set.", "success");
     }
     els.pinField.value = "";
+    save();
     updatePinStatus();
   }
   els.savePinBtn.addEventListener("click", savePin);
@@ -471,14 +564,20 @@
   });
   els.search.addEventListener("input", renderTable);
 
+  // Settings change on every keystroke; debounce so we don't spam the host.
+  var settingsTimer = null;
+  function saveSettingsSoon() {
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(save, 500);
+  }
   els.currency.addEventListener("input", function () {
     currency = els.currency.value || "$";
-    localStorage.setItem(CURRENCY_KEY, currency);
     renderAll();
+    saveSettingsSoon();
   });
   els.autoClear.addEventListener("input", function () {
     autoClearSec = clampInt(els.autoClear.value, 1, 60, 5);
-    localStorage.setItem(AUTOCLEAR_KEY, String(autoClearSec));
+    saveSettingsSoon();
   });
 
   /* ---------- CSV import / export ---------- */
@@ -606,10 +705,21 @@
   });
 
   /* ---------- Init ---------- */
-  els.currency.value = currency;
-  els.autoClear.value = String(autoClearSec);
   updateFsIcon();
-  updatePinStatus();
   showIdle();
-  renderAll();
+
+  detectBackend().then(function () {
+    els.currency.value = currency;
+    els.autoClear.value = String(autoClearSec);
+    updatePinStatus();
+    renderAll();
+    if (backend === "server") {
+      setInterval(pollHost, POLL_MS);
+      // Re-sync as soon as a sleeping tablet wakes or regains focus.
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) pollHost();
+      });
+      window.addEventListener("online", pollHost);
+    }
+  });
 })();

@@ -1,0 +1,10 @@
+# Live shop data created by server.py on the host PC.
+# Keep the shop's real products out of the repository.
+data.json
+data.json.tmp
+data.json.corrupt
+
+# Local tooling
+node_modules/
+package.json
+package-lock.json

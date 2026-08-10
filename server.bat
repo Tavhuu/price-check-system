@@ -19,10 +19,17 @@ ping -n 1 %HOSTNAME% >nul 2>nul && set "OPENHOST=%HOSTNAME%"
 set "URL=http://%OPENHOST%:%PORT%/"
 title Price Check - local server
 
-REM --- Find something that can serve static files ---
-where py >nul 2>nul        && (set "CMD=py -3 -m http.server %PORT%"           & goto run)
-where python >nul 2>nul    && (set "CMD=python -m http.server %PORT%"          & goto run)
-where python3 >nul 2>nul   && (set "CMD=python3 -m http.server %PORT%"         & goto run)
+REM --- Prefer server.py: it adds the shared database used by tablets ---
+where py >nul 2>nul        && (set "CMD=py -3 server.py %PORT%"                & goto run)
+where python >nul 2>nul    && (set "CMD=python server.py %PORT%"               & goto run)
+where python3 >nul 2>nul   && (set "CMD=python3 server.py %PORT%"              & goto run)
+
+REM --- No Python: still works, but each device keeps its own separate list ---
+echo.
+echo   NOTE: Python was not found, so the shared database is unavailable.
+echo   The app will run, but every device keeps its OWN product list.
+echo   Install Python 3 and re-run this to share one database.
+echo.
 where php >nul 2>nul        && (set "CMD=php -S localhost:%PORT%"               & goto run)
 where npx >nul 2>nul        && (set "CMD=npx --yes http-server -p %PORT% -c-1 ." & goto run)
 

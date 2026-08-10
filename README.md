@@ -1,20 +1,53 @@
 # Price Check &amp; Product Database
 
-A simple, self-contained web app to **scan a barcode, check an item's name and
-price**, and build a **product database** you can export and later import into
-your POS system.
+Scan a barcode, see the item's **name and price** on a big kiosk screen, and
+build a **product database** you can export into your POS system later.
 
-No build step, no server, no dependencies. Open it in a browser and start
-scanning.
+Runs two ways:
+
+- **Host + tablets (POS style)** — one PC hosts a **shared database**; tablets
+  and phones on the same Wi-Fi connect to it and all see the same products.
+- **Standalone** — just open it in a browser; data stays in that browser.
+
+No build step and no dependencies beyond Python (only needed for hosting).
 
 ## Why
 
 Your POS is still being tested, but you need price checks **now**. This tool
 lets you:
 
-1. Scan (or type) a barcode and instantly see the product name and price.
+1. Scan a barcode and instantly see the product name and price.
 2. Add products as you go, building a clean database.
 3. Export that database (CSV or JSON) to import into the POS later.
+
+## Quick start — host PC + tablet over Wi-Fi
+
+On the **PC** that will hold the data:
+
+1. Install [Python 3](https://www.python.org/downloads/) if you don't have it
+   (tick **"Add Python to PATH"** during setup).
+2. Run **`allow-firewall.bat`** once (approve the admin prompt) so tablets are
+   allowed to connect.
+3. Double-click **`host.bat`**. It prints two addresses:
+
+   ```
+   On this PC:        http://localhost:8000/
+   On the tablet:     http://192.168.1.50:8000/     <-- use this one
+   ```
+
+On the **tablet**, connected to the same Wi-Fi:
+
+4. Open the browser and type the **"On the tablet"** address.
+5. Optional: use *Add to Home Screen* so it opens fullscreen like an app.
+
+That's it. Add a product on the PC and the tablet sees it within a few
+seconds — and vice versa. Everything is stored on the PC in `data.json`;
+nothing leaves your network.
+
+> **Both devices must be on the same Wi-Fi**, and the PC must stay on and
+> running `host.bat` for tablets to work. If the tablet can't connect, check
+> the firewall step and that Windows treats your Wi-Fi as a **Private**
+> network.
 
 ## Features
 
@@ -41,8 +74,13 @@ lets you:
   Existing barcodes are updated, new ones are added.
 - **Export CSV / JSON** — take your database anywhere, including your POS.
 - **Configurable currency symbol** (`$`, `€`, `£`, `₫`, `kr`, …).
-- **Local persistence** — everything is saved in your browser's `localStorage`.
-  Nothing is sent anywhere.
+- **Shared database over Wi-Fi** — when served by `host.bat`/`server.py`, every
+  device reads and writes **one** database on the host PC and picks up other
+  devices' changes within a few seconds. Products, currency, auto-clear delay
+  and the Manage PIN are all shared.
+- **Works offline-ish and standalone** — opened without the host (plain file or
+  static hosting), it falls back to that browser's own `localStorage`. Either
+  way nothing is sent to the internet.
 
 ## Usage
 
@@ -109,13 +147,26 @@ python3 -m http.server 8000
 
 ## Batch files at a glance (Windows)
 
-| File                    | What it does                                             |
-|-------------------------|----------------------------------------------------------|
-| `server.bat`            | Start the server once and open the browser (simple use). |
-| `kiosk.bat`             | POS mode: auto-restart server + fullscreen + auto-reopen.|
-| `install-startup.bat`   | Make `kiosk.bat` launch automatically at login.          |
-| `uninstall-startup.bat` | Remove the auto-start.                                    |
-| `set-hostname.bat`      | One-time: enable `http://pricecheck.local:8000/`.        |
+| File                    | What it does                                              |
+|-------------------------|-----------------------------------------------------------|
+| `host.bat`              | **Host for tablets.** Shared database + auto-restart.     |
+| `allow-firewall.bat`    | One-time: let tablets reach this PC (admin).              |
+| `server.bat`            | Start the server once and open the browser (simple use).  |
+| `kiosk.bat`             | POS mode: auto-restart server + fullscreen + auto-reopen. |
+| `install-startup.bat`   | Make `kiosk.bat` launch automatically at login.           |
+| `uninstall-startup.bat` | Remove the auto-start.                                     |
+| `set-hostname.bat`      | One-time: enable `http://pricecheck.local:8000/`.         |
+
+`host.bat` and `kiosk.bat` both run `server.py`, so both give tablets the
+shared database. Use `host.bat` when the PC is just the server, and
+`kiosk.bat` when the PC is *also* a scanning terminal.
+
+## Where the data lives
+
+With a host running, everything is in **`data.json`** next to `server.py` on the
+host PC. Back that file up and you've backed up the shop. It is written
+atomically, and a corrupt file is preserved as `data.json.corrupt` rather than
+discarded. It's excluded from git so your real prices never get committed.
 
 ## Importing into your POS later
 
