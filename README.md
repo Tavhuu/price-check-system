@@ -70,6 +70,16 @@ to stop. It uses Python if installed, otherwise PHP or Node; if none are found
 it tells you to install Python from <https://www.python.org/downloads/> (tick
 *"Add Python to PATH"* during setup).
 
+**Friendly URL (optional):** if you'd rather open `http://pricecheck.local:8000/`
+than `localhost`, run **`set-hostname.bat`** once (approve the administrator
+prompt). It adds a single line to the Windows hosts file mapping
+`pricecheck.local` to this PC. After that, `server.bat` opens the friendly URL
+automatically; if the hostname isn't set up it just falls back to `localhost`.
+To change the name, edit `HOSTNAME` at the top of both files. To undo, remove
+the `pricecheck.local` line from `C:\Windows\System32\drivers\etc\hosts`.
+(The `.local` name only works on this PC — it's a local alias, not a public
+web address.)
+
 ### Serving it manually (any OS)
 
 ```bash

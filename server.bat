@@ -11,7 +11,12 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 set "PORT=8000"
-set "URL=http://localhost:%PORT%/"
+REM Friendly hostname (set up once with set-hostname.bat). If it isn't
+REM configured in the Windows hosts file yet, we fall back to localhost.
+set "HOSTNAME=pricecheck.local"
+set "OPENHOST=localhost"
+ping -n 1 %HOSTNAME% >nul 2>nul && set "OPENHOST=%HOSTNAME%"
+set "URL=http://%OPENHOST%:%PORT%/"
 title Price Check - local server
 
 REM --- Find something that can serve static files ---
