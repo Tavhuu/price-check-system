@@ -139,29 +139,29 @@ To change the port on Windows, edit `set "PORT=8000"` at the top of
 
 ### Surviving reboots and power cuts
 
-Run **`install-autostart.bat`** once (approve the admin prompt). It registers a
-scheduled task that starts the host **at boot, before anyone logs in**, and
-restarts it automatically if it ever crashes. After a reboot or a power cut the
-tablets start working again on their own — nobody has to touch the PC.
-
-It then **starts the host and checks it actually responds**, so you find out
-immediately whether it worked rather than at the next reboot. If it can't, it
-prints the likely cause and offers a simpler **Startup-folder** method instead
-(no admin needed, but it only runs after someone logs in — pair it with Windows
-automatic sign-in if you want power-cut recovery).
-
-Close any `host.bat` window before running it, otherwise the port is already
-taken and the check can't test the task properly.
+Run **`install-autostart.bat`** once — just double-click it, **no administrator
+needed**. It registers the host under your account's *Run* key, so it starts
+every time you log in to Windows. Sign out and back in to test it.
 
 Undo it any time with **`uninstall-autostart.bat`** (your database is left
-alone). Once auto-start is installed you don't need `host.bat` for normal use;
-it's still handy for *seeing* the tablet address.
+alone; it also clears any older method). Once auto-start is on you don't need
+`host.bat` for normal use — it's still handy for *seeing* the tablet address,
+and it now tells you if the host is already running instead of starting a
+second copy.
 
-**If it still doesn't work:** open Task Scheduler (`taskschd.msc`) → *Task
-Scheduler Library* → **PriceCheckHost** → *History* for the exact error. The
-most common cause is Python installed **for your user only** — the task runs as
-SYSTEM and can't reach it. Reinstall Python with *"Install for all users"*
-ticked and run the installer again.
+**Starting before anyone logs in** — optional, needs admin. `install-autostart.bat`
+only runs after you sign in. If the shop PC boots to a login screen and nobody
+signs in, use **`install-autostart-boot.bat`** instead: it registers a scheduled
+task that runs at boot as the SYSTEM account, verifies it really came up, and
+reports the cause if not. Two caveats:
+
+- Python must be installed **for all users** — SYSTEM cannot use a "just for me"
+  install. This is the most common reason it fails.
+- Keep the folder somewhere plain like `C:\PriceCheck` rather than a
+  OneDrive-synced Desktop, which SYSTEM may not be able to read.
+
+Use one method or the other, not both, or two copies will fight over the port.
+The installers clear each other automatically.
 
 **⚠️ Making the PC power itself back on after an outage is a BIOS setting, not
 something software can do.** When mains power returns, a PC that was off stays
@@ -173,8 +173,9 @@ off unless its firmware is told otherwise. To enable it:
    Failure"** or similar — usually under *Power Management* or *Advanced*.
 3. Set it to **Power On** (sometimes called *Last State*), then save and exit.
 
-With that set plus `install-autostart.bat`, the whole system recovers from a
-power cut unattended. A small UPS on the PC and router is worth considering too
+For full unattended recovery you need that BIOS setting **plus** either
+`install-autostart-boot.bat`, or `install-autostart.bat` together with Windows
+**automatic sign-in**. A small UPS on the PC and router is worth considering too
 — it rides out brief cuts and lets the PC shut down cleanly.
 
 **Optional nightly restart:** `schedule-reboot.bat` makes the PC reboot itself
@@ -192,9 +193,10 @@ switched off nightly anyway.
 | `server.py`               | The host: shared database + serves the app       |
 | `host.bat`                | Windows: run the host, with auto-restart         |
 | `allow-firewall.bat`      | Windows, one-time: let tablets reach this PC     |
-| `install-autostart.bat`   | Windows, one-time: start the host at boot        |
-| `uninstall-autostart.bat` | Remove the auto-start                            |
-| `autostart.ps1`           | Does the work for the two scripts above          |
+| `install-autostart.bat`   | One-time: start the host at login (no admin)     |
+| `install-autostart-boot.bat` | Optional: start before login (needs admin)    |
+| `uninstall-autostart.bat` | Turn off auto-start (any method)                 |
+| `autostart.ps1`           | Does the work for the "before login" option      |
 | `schedule-reboot.bat`     | Optional: nightly PC restart                     |
 
 ## Where the data lives

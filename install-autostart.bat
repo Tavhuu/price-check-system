@@ -1,34 +1,111 @@
 @echo off
+title Price Check - Enable Auto-Start
+cd /d "%~dp0"
+
 REM ============================================================
-REM  Price Check - install auto-start (Windows)
-REM  Run this ONCE on the HOST PC and approve the admin prompt.
+REM  Price Check - enable auto-start (Windows)
 REM
-REM  The host will then start automatically when the PC BOOTS -
-REM  before anyone logs in - so after a restart or a power cut
-REM  the tablets work again without anyone touching the PC.
-REM  It also restarts itself if it ever stops.
+REM  Makes the host start automatically every time you log in.
+REM  Registers the launcher under the per-user "Run" key, so NO
+REM  administrator rights are needed and it runs as you - which
+REM  matters when the folder lives on your Desktop and Python is
+REM  installed for your account only.
 REM
-REM  This checks that it really works and tells you if not.
-REM  To undo, run uninstall-autostart.bat.
+REM  Double-click this file once.
+REM  To turn it off later: uninstall-autostart.bat
 REM ============================================================
 
 setlocal EnableExtensions
-cd /d "%~dp0"
 
-REM --- Re-launch as administrator if we are not already ---
-net session >nul 2>nul
-if %errorlevel% neq 0 (
-  echo Requesting administrator rights...
-  powershell -NoProfile -Command "Start-Process -Verb RunAs -FilePath '%~f0'"
+set "NAME=PriceCheckHost"
+
+REM --- Find the launcher. host.bat is the normal name; run_server.bat is
+REM     accepted too in case the file was renamed. ---
+set "TARGET="
+if exist "%~dp0host.bat"       set "TARGET=%~dp0host.bat"
+if not defined TARGET if exist "%~dp0run_server.bat" set "TARGET=%~dp0run_server.bat"
+
+if not defined TARGET (
+  echo.
+  echo   Could not find host.bat in this folder:
+  echo       %~dp0
+  echo.
+  echo   Keep this file in the SAME folder as host.bat and server.py,
+  echo   then run it again.
+  echo.
+  pause
   exit /b
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0autostart.ps1" -Action install
+if not exist "%~dp0server.py" (
+  echo.
+  echo   WARNING: server.py is not in this folder. Auto-start will be
+  echo   registered, but the host will not run until all the files are
+  echo   together in one folder.
+  echo.
+)
 
 echo.
-echo   IMPORTANT - so the PC itself powers back on after a power cut,
-echo   you must also enable the BIOS/UEFI setting usually called
-echo   "Restore on AC Power Loss" or "AC Power Recovery" and set it
-echo   to "Power On". No software can do that part.
+echo   Registering Price Check to start automatically at login...
+echo.
+echo   Will launch: %TARGET%
+echo.
+
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "%NAME%" /t REG_SZ /d "\"%TARGET%\"" /f >nul 2>&1
+
+REM --- Clean up anything left by earlier versions of this installer.
+REM     Two auto-start methods at once would fight over the port. ---
+del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Price Check Host.lnk" >nul 2>&1
+schtasks /query /tn "%NAME%" >nul 2>&1
+if not errorlevel 1 (
+  echo   Removing the older "before login" scheduled task...
+  schtasks /end    /tn "%NAME%" >nul 2>&1
+  schtasks /delete /tn "%NAME%" /f  >nul 2>&1
+  schtasks /query  /tn "%NAME%" >nul 2>&1
+  if not errorlevel 1 (
+    echo.
+    echo   NOTE: that task could not be removed without administrator rights.
+    echo   Please run uninstall-autostart.bat as administrator first, then
+    echo   run this file again - otherwise two copies of the host would try
+    echo   to use the same port.
+    echo.
+  )
+)
+
+echo   Verifying the registration...
+echo.
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "%NAME%"
+if errorlevel 1 goto failed
+
+echo.
+echo   ====================================================
+echo    DONE. Price Check will start by itself the next
+echo    time you log in to Windows.
+echo.
+echo    TEST IT NOW: sign out and back in (or restart).
+echo    The server window should open on its own, showing
+echo    the address to type on the tablet.
+echo.
+echo    To turn it off later: uninstall-autostart.bat
+echo   ====================================================
+echo.
+echo   NOTE: this starts after you LOG IN. So the shop recovers
+echo   from a power cut on its own, also turn on:
+echo     1. BIOS/UEFI "Restore on AC Power Loss" = Power On
+echo     2. Windows automatic sign-in
+echo   Or run install-autostart-boot.bat, which starts the host
+echo   before anyone logs in (needs administrator).
+echo.
+goto end
+
+:failed
+echo.
+echo   ====================================================
+echo    FAILED - auto-start was NOT registered.
+echo    Try right-clicking this file and choosing
+echo    "Run as administrator", then run it again.
+echo   ====================================================
+
+:end
 echo.
 pause

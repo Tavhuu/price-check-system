@@ -41,10 +41,48 @@ if not defined PY (
   exit /b
 )
 
+REM --- Is a host already running (e.g. started automatically at login)? ---
+call :port_busy
+if "%BUSY%"=="1" (
+  echo.
+  echo   Price Check is ALREADY RUNNING on this PC.
+  echo   ^(It probably started automatically when you logged in.^)
+  echo.
+  echo   On this PC:     http://localhost:%PORT%/
+  echo.
+  echo   To see the tablet address, open that link and it is shown in the
+  echo   Manage panel, or turn off auto-start with uninstall-autostart.bat
+  echo   and run this file again.
+  echo.
+  pause
+  exit /b
+)
+
 :loop
 %PY% server.py %PORT%
+
+REM If the port is now served by something else, another copy took over -
+REM stop instead of restarting forever.
+call :port_busy
+if "%BUSY%"=="1" (
+  echo.
+  echo   Another copy of the host is now running on port %PORT%,
+  echo   so this window is not needed. Closing.
+  echo.
+  pause
+  exit /b
+)
+
 echo.
 echo   [%date% %time%] Host stopped - restarting in 3 seconds...
 echo   ^(Press Ctrl+C now to quit for good.^)
 timeout /t 3 /nobreak >nul
 goto loop
+
+REM ------------------------------------------------------------
+REM Sets BUSY=1 when something is already answering on %PORT%.
+:port_busy
+set "BUSY=0"
+for /f %%R in ('powershell -NoProfile -Command ^
+  "try{(Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri 'http://localhost:%PORT%/api/rev')^|Out-Null;'1'}catch{'0'}" 2^>nul') do set "BUSY=%%R"
+exit /b
