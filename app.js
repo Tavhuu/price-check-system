@@ -51,6 +51,7 @@
     notFoundCode: $("notFoundCode"),
     countdownBar: $("countdownBar"),
     countdownBar2: $("countdownBar2"),
+    kioskStatus: $("kioskStatus"),
 
     // pin gate
     pinOverlay: $("pinOverlay"),
@@ -242,6 +243,7 @@
   function showIdle() {
     clearTimeout(clearTimer);
     clearTimer = null;
+    els.kioskStatus.textContent = "";
     showState("idle");
   }
 
@@ -271,33 +273,61 @@
     armAutoClear();
   }
 
-  /* ================= HARDWARE SCANNER (keyboard wedge) ================= */
-  // A barcode scanner behaves like a keyboard: it types the code very fast and
-  // ends with Enter. We buffer keystrokes globally and submit on Enter, so the
-  // user never has to focus a field. A pause resets the buffer, so stray key
-  // presses don't accumulate into a bogus code.
+  /* ================= HARDWARE SCANNER (keyboard wedge) =================
+   * A barcode scanner behaves like a keyboard: it "types" the code, usually
+   * very fast. We buffer those keystrokes globally so nothing has to be
+   * focused first.
+   *
+   * Scanners vary, so we commit a scan on ANY of:
+   *   - Enter or Tab (the common suffixes), or
+   *   - a short pause after the last character, for scanners configured with
+   *     no suffix at all - otherwise those would never trigger a lookup.
+   *
+   * The reset window is deliberately generous so a slower (e.g. Bluetooth)
+   * scanner still accumulates its digits instead of dropping them.
+   */
   var scanBuffer = "";
   var lastKeyAt = 0;
-  var INTERKEY_RESET_MS = 200; // gap larger than this starts a fresh buffer
+  var idleTimer = null;
+  var INTERKEY_RESET_MS = 1000; // long gap => start a fresh code
+  var END_IDLE_MS = 300;        // quiet for this long => end of a suffix-less scan
+  var MIN_SCAN_LEN = 4;         // ignore stray keypresses
+
+  function commitScan() {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+    var code = scanBuffer;
+    scanBuffer = "";
+    if (code.length >= MIN_SCAN_LEN) {
+      els.kioskStatus.textContent = "";
+      doLookup(code);
+    }
+  }
 
   document.addEventListener("keydown", function (e) {
-    // Let real typing into any field (manage panel, manual box) behave normally.
-    var tag = (e.target && e.target.tagName ? e.target.tagName : "").toUpperCase();
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // While the Manage panel or PIN gate is open, typing must behave normally
+    // (product names, PIN digits). On the kiosk screen we capture everything,
+    // so a stray focused element can never swallow a scan.
+    if (isManageOpen() || !els.pinOverlay.hidden) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
     var now = Date.now();
     if (now - lastKeyAt > INTERKEY_RESET_MS) scanBuffer = "";
     lastKeyAt = now;
 
-    if (e.key === "Enter") {
-      if (scanBuffer.length >= 3) doLookup(scanBuffer);
-      scanBuffer = "";
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      commitScan();
       return;
     }
     // Accept typical barcode characters only.
     if (e.key.length === 1 && /[0-9A-Za-z\-]/.test(e.key)) {
       scanBuffer += e.key;
+      // Visible proof that keystrokes are arriving - handy when a scanner
+      // beeps but nothing seems to happen.
+      els.kioskStatus.textContent = "Reading… " + scanBuffer.length;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(commitScan, END_IDLE_MS);
     }
   });
 

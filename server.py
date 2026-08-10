@@ -9,7 +9,10 @@ every device reads and writes - like a POS system.
     python server.py            # port 8000
     python server.py 8080       # custom port
 
-Data is stored next to this file in data.json. Nothing leaves your network.
+Data lives in its own SQLite database, pricecheck.db, next to this file.
+SQLite is used (rather than a plain JSON file) so a power cut cannot corrupt
+the shop's data: every change is a transaction that either fully happens or
+does not happen at all. Nothing leaves your network.
 
 Endpoints used by the app:
     GET  /api/rev    -> {"rev": N}                 (cheap change check)
@@ -20,68 +23,171 @@ Endpoints used by the app:
 import json
 import os
 import socket
+import sqlite3
 import sys
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "data.json")
+DB_FILE = os.path.join(BASE_DIR, "pricecheck.db")
+LEGACY_JSON = os.path.join(BASE_DIR, "data.json")
 DEFAULT_PORT = 8000
-MAX_BODY = 32 * 1024 * 1024  # 32 MB cap so a bad request can't exhaust memory
+MAX_BODY = 32 * 1024 * 1024  # cap so a bad request can't exhaust memory
+
+PRODUCT_FIELDS = ("id", "barcode", "name", "price", "category", "sku",
+                  "createdAt", "updatedAt")
 
 _lock = threading.Lock()
 
 
-def _empty():
-    return {"rev": 0, "products": [], "settings": {}}
+def connect():
+    """Open the database with settings chosen for power-loss safety."""
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn.row_factory = sqlite3.Row
+    # WAL keeps readers fast while a write is in progress; FULL sync means a
+    # committed change is really on disk before we report success.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=FULL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
 
 
-def load_data():
-    """Read data.json, tolerating a missing or corrupt file."""
+def init_db():
+    """Create tables if needed and import any old data.json exactly once."""
+    fresh = not os.path.exists(DB_FILE)
+    conn = connect()
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as fh:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS products (
+                id        TEXT PRIMARY KEY,
+                barcode   TEXT NOT NULL UNIQUE,
+                name      TEXT NOT NULL,
+                price     REAL NOT NULL DEFAULT 0,
+                category  TEXT NOT NULL DEFAULT '',
+                sku       TEXT NOT NULL DEFAULT '',
+                createdAt TEXT NOT NULL DEFAULT '',
+                updatedAt TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            INSERT OR IGNORE INTO meta (key, value) VALUES ('rev', '0');
+            """
+        )
+        conn.commit()
+
+        if fresh and os.path.exists(LEGACY_JSON):
+            migrated = _import_json(conn)
+            if migrated is not None:
+                print("  Imported %d products from the old data.json." % migrated)
+    finally:
+        conn.close()
+
+
+def _import_json(conn):
+    """One-time import of the previous data.json format."""
+    try:
+        with open(LEGACY_JSON, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        if not isinstance(data, dict):
-            return _empty()
-        data.setdefault("rev", 0)
-        data.setdefault("products", [])
-        data.setdefault("settings", {})
-        return data
-    except FileNotFoundError:
-        return _empty()
-    except (json.JSONDecodeError, OSError):
-        # Keep a copy of the unreadable file rather than silently dropping it.
+        products = data.get("products") or []
+        settings = data.get("settings") or {}
+        _write(conn, products, settings)
+        os.replace(LEGACY_JSON, LEGACY_JSON + ".imported")
+        return len(products)
+    except (OSError, json.JSONDecodeError, ValueError, sqlite3.Error) as exc:
+        print("  ! Could not import data.json (%s); starting empty." % exc)
+        return None
+
+
+def _row_to_product(row):
+    p = {k: row[k] for k in PRODUCT_FIELDS}
+    p["price"] = float(p["price"] or 0)
+    return p
+
+
+def read_all():
+    conn = connect()
+    try:
+        rev = int(conn.execute("SELECT value FROM meta WHERE key='rev'").fetchone()[0])
+        products = [_row_to_product(r) for r in
+                    conn.execute("SELECT * FROM products ORDER BY rowid")]
+        settings = {r["key"]: json.loads(r["value"])
+                    for r in conn.execute("SELECT * FROM settings")}
+        return {"rev": rev, "products": products, "settings": settings}
+    finally:
+        conn.close()
+
+
+def read_rev():
+    conn = connect()
+    try:
+        return int(conn.execute("SELECT value FROM meta WHERE key='rev'").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def _write(conn, products, settings):
+    """Replace the whole catalogue inside one transaction."""
+    rows = []
+    seen = set()
+    for p in products:
+        if not isinstance(p, dict):
+            continue
+        barcode = str(p.get("barcode", "")).strip()
+        name = str(p.get("name", "")).strip()
+        if not barcode or not name or barcode in seen:
+            continue  # skip blanks and duplicate barcodes
+        seen.add(barcode)
         try:
-            os.replace(DATA_FILE, DATA_FILE + ".corrupt")
-            print("  ! data.json was unreadable; kept a copy as data.json.corrupt")
-        except OSError:
-            pass
-        return _empty()
+            price = float(p.get("price") or 0)
+        except (TypeError, ValueError):
+            price = 0.0
+        rows.append((
+            str(p.get("id") or barcode),
+            barcode,
+            name,
+            price,
+            str(p.get("category") or ""),
+            str(p.get("sku") or ""),
+            str(p.get("createdAt") or ""),
+            str(p.get("updatedAt") or ""),
+        ))
+
+    with conn:  # commits on success, rolls back on any error
+        conn.execute("DELETE FROM products")
+        conn.executemany(
+            "INSERT INTO products (id, barcode, name, price, category, sku,"
+            " createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)", rows)
+        conn.execute("DELETE FROM settings")
+        conn.executemany(
+            "INSERT INTO settings (key, value) VALUES (?,?)",
+            [(str(k), json.dumps(v)) for k, v in settings.items()])
+        conn.execute(
+            "UPDATE meta SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)"
+            " WHERE key='rev'")
+    return len(rows)
 
 
 def save_data(products, settings):
-    """Write data.json atomically and bump the revision counter."""
     with _lock:
-        current = load_data()
-        data = {
-            "rev": int(current.get("rev", 0)) + 1,
-            "products": products,
-            "settings": settings,
-        }
-        tmp = DATA_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, DATA_FILE)  # atomic on Windows and POSIX
-        return data
+        conn = connect()
+        try:
+            _write(conn, products, settings)
+        finally:
+            conn.close()
+    return read_all()
 
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
 
-    # --- helpers ---------------------------------------------------------
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode("utf-8")
         self.send_response(status)
@@ -97,13 +203,16 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         super().end_headers()
 
-    # --- routes ----------------------------------------------------------
     def do_GET(self):
         if self.path == "/api/rev":
-            self._send_json({"rev": load_data().get("rev", 0)})
+            self._send_json({"rev": read_rev()})
             return
         if self.path == "/api/data":
-            self._send_json(load_data())
+            self._send_json(read_all())
+            return
+        # Never hand out the database itself over HTTP.
+        if os.path.basename(self.path.split("?")[0]).startswith("pricecheck.db"):
+            self.send_error(404, "Not found")
             return
         super().do_GET()
 
@@ -128,7 +237,10 @@ class Handler(SimpleHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, AttributeError):
             self.send_error(400, "Invalid JSON payload")
             return
-        self._send_json(save_data(products, settings))
+        try:
+            self._send_json(save_data(products, settings))
+        except sqlite3.Error as exc:
+            self.send_error(500, "Database error: %s" % exc)
 
     def do_POST(self):  # accept POST as an alias for PUT
         self.do_PUT()
@@ -171,7 +283,14 @@ def main():
             print("Usage: python server.py [port]")
             return 2
 
-    data = load_data()
+    try:
+        init_db()
+        data = read_all()
+    except sqlite3.Error as exc:
+        print("\n  Could not open the database: %s" % exc)
+        print("  File: %s\n" % DB_FILE)
+        return 1
+
     try:
         httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     except OSError as exc:
@@ -182,7 +301,7 @@ def main():
     ips = lan_ips()
     print("")
     print("  Price Check host is running.")
-    print("  Products in database: %d" % len(data.get("products", [])))
+    print("  Products in database: %d" % len(data["products"]))
     print("")
     print("  On this PC:        http://localhost:%d/" % port)
     for ip in ips:
@@ -191,10 +310,9 @@ def main():
         print("  (Could not detect a network address - check your Wi-Fi connection.)")
     print("")
     print("  Type that address into the tablet's browser, on the same Wi-Fi.")
-    print("  If it will not connect, allow Python through the Windows firewall")
-    print("  (or run allow-firewall.bat once as administrator).")
+    print("  If it will not connect, run allow-firewall.bat once as administrator.")
     print("")
-    print("  Data file: %s" % DATA_FILE)
+    print("  Database: %s" % DB_FILE)
     print("  Press Ctrl+C to stop.")
     print("")
 

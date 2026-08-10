@@ -41,7 +41,7 @@ On the **tablet**, connected to the same Wi-Fi:
 5. Optional: use *Add to Home Screen* so it opens fullscreen like an app.
 
 That's it. Add a product on the PC and the tablet sees it within a few
-seconds — and vice versa. Everything is stored on the PC in `data.json`;
+seconds — and vice versa. Everything is stored on the PC in `pricecheck.db`;
 nothing leaves your network.
 
 > **Both devices must be on the same Wi-Fi**, and the PC must stay on and
@@ -90,14 +90,36 @@ scanner — the price shows and clears itself after a few seconds. Tap ⚙️
 delay.
 
 Most USB/Bluetooth barcode scanners work in "keyboard wedge" mode out of the
-box and send an **Enter** after each barcode, which is exactly what this
-expects — plug it in and scan.
+box — plug it in and scan. A scan is accepted whether your scanner sends
+**Enter**, **Tab**, or **no suffix at all**, and whether it types fast or
+slowly, so no scanner configuration should be needed.
+
+### Scanner beeps but nothing appears
+
+The beep only means the scanner *read* the barcode — it doesn't prove the
+digits reached the app. Work through these:
+
+1. **Watch the bottom of the kiosk screen while scanning.** It briefly shows
+   `Reading… 5` as characters arrive.
+   - **You see it** → the digits are arriving. If the price still doesn't show,
+     that barcode isn't in the database yet: open ⚙️ Manage and check the
+     barcode matches *exactly* (no missing leading zero).
+   - **You see nothing** → no keystrokes are reaching the browser; continue below.
+2. **Open Notepad and scan.** If the barcode doesn't type itself there either,
+   the problem is the scanner, not the app — it isn't in **keyboard / HID
+   keyboard ("keyboard wedge")** mode. Most scanners have a setup barcode in
+   their manual to switch to it (as opposed to *USB serial/COM* or *HID POS*).
+3. **Close the ⚙️ Manage panel.** While it's open, keystrokes go to the form
+   fields, which is deliberate so you can type product names.
+4. **Tap the screen once** after the tablet has been idle, so the browser page
+   has focus, then scan again.
 
 **Fullscreen & PIN:** Tap ⛶ (top-left) for fullscreen. To stop customers
 changing prices, open ⚙️ Manage → set a **Manage PIN**; after that the gear
-asks for the PIN. Clear the field and press *Update PIN* to turn it off. The
-PIN is stored only in this browser (hashed), as a deterrent — not bank-grade
-security.
+asks for the PIN. Clear the field and press *Update PIN* to turn it off. With a
+host running the PIN applies to **every device**, so setting it on the PC also
+locks the tablets. It is stored hashed and is a deterrent against customers and
+casual tampering — not bank-grade security.
 
 ### Starting and stopping the host
 
@@ -115,23 +137,63 @@ python3 server.py 8080   # custom port
 To change the port on Windows, edit `set "PORT=8000"` at the top of
 `host.bat` (and re-run `allow-firewall.bat`, which opens port 8000).
 
+### Surviving reboots and power cuts
+
+Run **`install-autostart.bat`** once (approve the admin prompt). It registers a
+scheduled task that starts the host **at boot, before anyone logs in**, and
+restarts it automatically if it ever crashes. After a reboot or a power cut the
+tablets start working again on their own — nobody has to touch the PC.
+
+Undo it any time with **`uninstall-autostart.bat`** (your database is left
+alone). Once auto-start is installed you don't need `host.bat` for normal use;
+it's still handy for *seeing* the tablet address.
+
+**⚠️ Making the PC power itself back on after an outage is a BIOS setting, not
+something software can do.** When mains power returns, a PC that was off stays
+off unless its firmware is told otherwise. To enable it:
+
+1. Restart and press <kbd>Del</kbd> / <kbd>F2</kbd> / <kbd>F10</kbd> (varies by
+   make) to enter **BIOS/UEFI setup**.
+2. Find **"Restore on AC Power Loss"**, **"AC Power Recovery"**, **"After Power
+   Failure"** or similar — usually under *Power Management* or *Advanced*.
+3. Set it to **Power On** (sometimes called *Last State*), then save and exit.
+
+With that set plus `install-autostart.bat`, the whole system recovers from a
+power cut unattended. A small UPS on the PC and router is worth considering too
+— it rides out brief cuts and lets the PC shut down cleanly.
+
+**Optional nightly restart:** `schedule-reboot.bat` makes the PC reboot itself
+daily at 04:00 (edit the time inside, or run it again and press **R** to
+remove). Useful for a machine that never gets turned off; skip it if the PC is
+switched off nightly anyway.
+
 ## Files
 
-| File                 | What it is                                          |
-|----------------------|-----------------------------------------------------|
-| `index.html`         | Page structure                                      |
-| `styles.css`         | Styling (dark theme, responsive)                    |
-| `app.js`             | Scanning, lookup, database, sync                    |
-| `server.py`          | The host: shared database + serves the app          |
-| `host.bat`           | Windows: run the host, with auto-restart            |
-| `allow-firewall.bat` | Windows, one-time: let tablets reach this PC        |
+| File                      | What it is                                       |
+|---------------------------|--------------------------------------------------|
+| `index.html`              | Page structure                                   |
+| `styles.css`              | Styling (dark theme, responsive)                 |
+| `app.js`                  | Scanning, lookup, database, sync                 |
+| `server.py`               | The host: shared database + serves the app       |
+| `host.bat`                | Windows: run the host, with auto-restart         |
+| `allow-firewall.bat`      | Windows, one-time: let tablets reach this PC     |
+| `install-autostart.bat`   | Windows, one-time: start the host at boot        |
+| `uninstall-autostart.bat` | Remove the auto-start                            |
+| `schedule-reboot.bat`     | Optional: nightly PC restart                     |
 
 ## Where the data lives
 
-With a host running, everything is in **`data.json`** next to `server.py` on the
-host PC. Back that file up and you've backed up the shop. It is written
-atomically, and a corrupt file is preserved as `data.json.corrupt` rather than
-discarded. It's excluded from git so your real prices never get committed.
+The host keeps its own **SQLite database**, `pricecheck.db`, next to
+`server.py`. Back up that one file and you've backed up the shop.
+
+SQLite is used instead of a plain text file specifically because of power
+cuts: every change is a transaction that either completes fully or not at all,
+so an outage mid-save can't leave you with a half-written or corrupted
+catalogue. The database is never served over HTTP, and it's excluded from git
+so your real prices never get committed.
+
+If you used an earlier version with `data.json`, it is imported automatically
+the first time the new host starts and renamed to `data.json.imported`.
 
 ## Importing into your POS later
 
@@ -168,7 +230,7 @@ are **added**.
   the database; the tablets are just screens.
 - **Same Wi-Fi**, and Windows must treat that network as **Private** (the
   firewall rule deliberately does not cover public networks).
-- **Back up `data.json`** on the host — that single file is your whole product
+- **Back up `pricecheck.db`** on the host — that single file is your whole product
   database. **Export CSV/JSON** from the Manage panel also works as a backup and
   is what you'll feed into the POS later.
 - Without a host (opening the files directly), each browser keeps its own

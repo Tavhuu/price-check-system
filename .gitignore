@@ -1,8 +1,12 @@
-# Live shop data created by server.py on the host PC.
-# Keep the shop's real products out of the repository.
+# The shop's live database, created by server.py on the host PC.
+# Keep real products and prices out of the repository.
+pricecheck.db
+pricecheck.db-wal
+pricecheck.db-shm
+
+# Old JSON store (auto-imported into the database on first run)
 data.json
-data.json.tmp
-data.json.corrupt
+data.json.*
 
 # Local tooling
 node_modules/
