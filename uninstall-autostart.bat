@@ -7,7 +7,7 @@ REM  touched - pricecheck.db stays exactly as it is.
 REM ============================================================
 
 setlocal EnableExtensions
-set "TASKNAME=PriceCheckHost"
+cd /d "%~dp0"
 
 net session >nul 2>nul
 if %errorlevel% neq 0 (
@@ -16,21 +16,7 @@ if %errorlevel% neq 0 (
   exit /b
 )
 
-schtasks /query /tn "%TASKNAME%" >nul 2>nul
-if %errorlevel% neq 0 (
-  echo.
-  echo   No auto-start task found - nothing to remove.
-  echo.
-  pause
-  exit /b
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0autostart.ps1" -Action remove
 
-schtasks /end    /tn "%TASKNAME%" >nul 2>nul
-schtasks /delete /tn "%TASKNAME%" /f >nul 2>nul
-
-echo.
-echo   Removed. The host no longer starts automatically.
-echo   Start it manually any time with host.bat.
-echo   Your database (pricecheck.db) was not touched.
 echo.
 pause

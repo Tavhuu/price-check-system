@@ -67,8 +67,8 @@ nothing leaves your network.
   Manage (with no PIN set, Manage opens freely so you can't get locked out).
 - **Manage panel** — the product database and all settings live behind the ⚙️
   button, keeping the scan screen distraction-free.
-- **Product database** — barcode, name, price, and optional category and SKU.
-- **Search** across name, barcode, category and SKU.
+- **Product database** — barcode, name, price, and an optional category.
+- **Search** across name, barcode and category.
 - **Import CSV** — bulk-load an existing product list. Column names are matched
   flexibly (e.g. `upc`/`ean`/`code` → barcode, `retail`/`sell` → price).
   Existing barcodes are updated, new ones are added.
@@ -144,9 +144,24 @@ scheduled task that starts the host **at boot, before anyone logs in**, and
 restarts it automatically if it ever crashes. After a reboot or a power cut the
 tablets start working again on their own — nobody has to touch the PC.
 
+It then **starts the host and checks it actually responds**, so you find out
+immediately whether it worked rather than at the next reboot. If it can't, it
+prints the likely cause and offers a simpler **Startup-folder** method instead
+(no admin needed, but it only runs after someone logs in — pair it with Windows
+automatic sign-in if you want power-cut recovery).
+
+Close any `host.bat` window before running it, otherwise the port is already
+taken and the check can't test the task properly.
+
 Undo it any time with **`uninstall-autostart.bat`** (your database is left
 alone). Once auto-start is installed you don't need `host.bat` for normal use;
 it's still handy for *seeing* the tablet address.
+
+**If it still doesn't work:** open Task Scheduler (`taskschd.msc`) → *Task
+Scheduler Library* → **PriceCheckHost** → *History* for the exact error. The
+most common cause is Python installed **for your user only** — the task runs as
+SYSTEM and can't reach it. Reinstall Python with *"Install for all users"*
+ticked and run the installer again.
 
 **⚠️ Making the PC power itself back on after an outage is a BIOS setting, not
 something software can do.** When mains power returns, a PC that was off stays
@@ -179,6 +194,7 @@ switched off nightly anyway.
 | `allow-firewall.bat`      | Windows, one-time: let tablets reach this PC     |
 | `install-autostart.bat`   | Windows, one-time: start the host at boot        |
 | `uninstall-autostart.bat` | Remove the auto-start                            |
+| `autostart.ps1`           | Does the work for the two scripts above          |
 | `schedule-reboot.bat`     | Optional: nightly PC restart                     |
 
 ## Where the data lives
@@ -205,7 +221,6 @@ Use **Export CSV**. The file has these columns:
 | `name`     | Product name                     |
 | `price`    | Selling price                    |
 | `category` | Product category (optional)      |
-| `sku`      | Stock code (optional)            |
 
 Most POS systems accept a CSV like this directly, or let you map these columns
 during import. Prefer structured data? Use **Export JSON**.
@@ -219,7 +234,6 @@ common aliases:
 - name: `name`, `product`, `product name`, `description`, `item`
 - price: `price`, `sell`, `retail`, `unit price`
 - category: `category`, `group`, `dept`
-- sku: `sku`, `stock code`
 
 Rows whose barcode already exists in the database are **updated**; new barcodes
 are **added**.

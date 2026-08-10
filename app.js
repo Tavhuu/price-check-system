@@ -78,7 +78,6 @@
     fName: $("fName"),
     fPrice: $("fPrice"),
     fCategory: $("fCategory"),
-    fSku: $("fSku"),
     saveBtn: $("saveBtn"),
     cancelEditBtn: $("cancelEditBtn"),
     search: $("search"),
@@ -461,8 +460,7 @@
       return (
         String(p.name || "").toLowerCase().indexOf(q) !== -1 ||
         String(p.barcode || "").toLowerCase().indexOf(q) !== -1 ||
-        String(p.category || "").toLowerCase().indexOf(q) !== -1 ||
-        String(p.sku || "").toLowerCase().indexOf(q) !== -1
+        String(p.category || "").toLowerCase().indexOf(q) !== -1
       );
     });
 
@@ -514,7 +512,6 @@
     els.fName.value = p.name || "";
     els.fPrice.value = p.price != null ? p.price : "";
     els.fCategory.value = p.category || "";
-    els.fSku.value = p.sku || "";
     els.formTitle.textContent = "Edit Product";
     els.saveBtn.textContent = "Update Product";
     els.cancelEditBtn.hidden = false;
@@ -550,7 +547,6 @@
       name: name,
       price: Number(price),
       category: els.fCategory.value.trim(),
-      sku: els.fSku.value.trim(),
     };
     if (editingId) {
       for (var i = 0; i < products.length; i++) {
@@ -611,7 +607,7 @@
   });
 
   /* ---------- CSV import / export ---------- */
-  var CSV_HEADERS = ["barcode", "name", "price", "category", "sku"];
+  var CSV_HEADERS = ["barcode", "name", "price", "category"];
   function csvEscape(v) {
     var s = String(v == null ? "" : v);
     if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -683,7 +679,6 @@
         idx.name = firstIndex(header, ["name", "product", "product name", "description", "item"]);
         idx.price = firstIndex(header, ["price", "sell", "retail", "unit price"]);
         idx.category = firstIndex(header, ["category", "group", "dept"]);
-        idx.sku = firstIndex(header, ["sku", "stock code"]);
         if (idx.barcode < 0 || idx.name < 0) {
           toast("CSV needs at least 'barcode' and 'name' columns.", "error");
           return;
@@ -699,7 +694,6 @@
             name: name,
             price: idx.price >= 0 ? cleanNumber(cells[idx.price]) : 0,
             category: idx.category >= 0 ? String(cells[idx.category] || "").trim() : "",
-            sku: idx.sku >= 0 ? String(cells[idx.sku] || "").trim() : "",
           };
           var existing = findByBarcode(barcode);
           if (existing) {
